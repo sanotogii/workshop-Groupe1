@@ -7,7 +7,7 @@ pipeline {
 
   options {
     timestamps()
-    timeout(time: 20, unit: 'MINUTES')
+    timeout(time: 60, unit: 'MINUTES')
   }
 
   stages {
@@ -15,11 +15,13 @@ pipeline {
       steps { sh 'npm ci' }
     }
 
-
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv('sonarqube') {
-          sh "${tool 'sonar-scanner'}/bin/sonar-scanner"
+        script {
+          def key = (env.GIT_BRANCH ==~ /(origin\/)?main/) ? 'learn-actions' : 'learn-actions-workshop-3'
+          withSonarQubeEnv('sonarqube') {
+            sh "${tool 'sonar-scanner'}/bin/sonar-scanner -Dsonar.projectKey=${key} -Dsonar.projectName=${key}"
+          }
         }
       }
     }
@@ -47,7 +49,20 @@ pipeline {
       }
     }
 
+    stage('OWASP Dependency-Check') {
+      steps {
+        dependencyCheck odcInstallation: 'dependency-check', nvdCredentialsId: 'nvd-api-key', additionalArguments: '--scan package-lock.json --format HTML --format XML --failOnCVSS 7'
+      }
+      post {
+        always {
+          dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+          archiveArtifacts artifacts: 'dependency-check-report.*', allowEmptyArchive: true
+        }
+      }
+    }
+
     stage('Deploy') {
+      when { expression { env.GIT_BRANCH ==~ /(origin\/)?main/ } }
       steps {
         withCredentials([
           string(credentialsId: 'cloudflare-api-token', variable: 'CLOUDFLARE_API_TOKEN'),
@@ -68,7 +83,7 @@ pipeline {
   }
 
   post {
-    success { echo 'site is live on learn-action.khalidlab.tech' }
+    success { echo 'pipeline OK' }
     failure { echo 'pipeline failed, check the stage logs' }
   }
 }
