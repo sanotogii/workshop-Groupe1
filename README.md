@@ -18,7 +18,7 @@ Workshop 3 :
 
 <div align="center">
 
-# Workshops 1 et 3 : SAST et SCA dans un pipeline CI/CD Jenkins
+# Workshops 2 et 3 : SAST et SCA dans un pipeline CI/CD Jenkins
 
 **Analyse statique du code (SonarQube, Semgrep) et analyse des dépendances (Dependabot, OWASP Dependency-Check)**
 
