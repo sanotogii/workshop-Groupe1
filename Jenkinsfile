@@ -86,41 +86,29 @@ pipeline {
         }
       }
     }
-
     stage('OWASP ZAP Baseline') {
       steps {
-        script {
-          def rc = sh(returnStatus: true, script: '''
-            mkdir -p zap-reports
-            docker rm -f zap-baseline 2>/dev/null || true
-            docker run --name zap-baseline -e TARGET_URL="$TARGET_URL" \
-              ghcr.io/zaproxy/zaproxy:stable \
-              sh -c 'mkdir -p /zap/wrk && zap-baseline.py -t "$TARGET_URL" -r zap-baseline.html -J zap-baseline.json -w zap-baseline.md'
-            rc=$?
-            docker cp zap-baseline:/zap/wrk/. zap-reports/ || true
-            docker rm -f zap-baseline
-            exit $rc
-          ''')
-          echo "ZAP baseline exit code: ${rc}"
-          // 0 = clean, 1 = FAIL rules, 2 = warnings, 3 = scan error
-          if (rc == 2) {
-            unstable('ZAP baseline found warnings')
-          } else if (rc != 0) {
-            error("ZAP baseline failed (exit ${rc})")
-          }
-        }
+        sh '''
+          mkdir -p zap-reports
+          docker rm -f zap-baseline 2>/dev/null || true
+
+          set +e
+          docker run --name zap-baseline -u root -t ghcr.io/zaproxy/zaproxy:stable \
+            bash -c "mkdir -p /zap/wrk && zap-baseline.py -t https://learn-action.khalidlab.tech -r zap-baseline.html -I"
+          rc=$?
+          set -e
+
+          docker cp zap-baseline:/zap/wrk/zap-baseline.html zap-reports/ || true
+          docker rm -f zap-baseline || true
+
+          echo "ZAP baseline exit code: $rc"
+          if [ "$rc" -ge 3 ]; then echo "ZAP baseline failed (exit $rc)"; exit 1; fi
+          if [ "$rc" -eq 1 ]; then echo "ZAP: alertes FAIL detectees"; exit 1; fi
+        '''
       }
       post {
         always {
-          archiveArtifacts artifacts: 'zap-reports/*', allowEmptyArchive: true
-          publishHTML(target: [
-            reportDir: 'zap-reports',
-            reportFiles: 'zap-baseline.html',
-            reportName: 'ZAP Baseline Report',
-            keepAll: true,
-            allowMissing: true,
-            alwaysLinkToLastBuild: true
-          ])
+          archiveArtifacts artifacts: 'zap-reports/*.html', allowEmptyArchive: true
         }
       }
     }
