@@ -11,6 +11,11 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  parameters {
+    string(name: 'TARGET_URL', defaultValue: 'https://notes.khalidlab.tech', description: 'App to scan with the ZAP baseline (passive) scan')
+    booleanParam(name: 'ACTIVE_SCAN', defaultValue: false, description: 'Run the ZAP active scan against a throwaway OWASP Juice Shop container (never against your real app)')
+  }
+
   stages {
     stage('Install') {
       steps { sh 'npm ci' }
@@ -81,10 +86,109 @@ pipeline {
         }
       }
     }
+
+    stage('OWASP ZAP Baseline') {
+      steps {
+        script {
+          def rc = sh(returnStatus: true, script: '''
+            mkdir -p zap-reports
+            docker rm -f zap-baseline 2>/dev/null || true
+            docker run --name zap-baseline -e TARGET_URL="$TARGET_URL" \
+              ghcr.io/zaproxy/zaproxy:stable \
+              sh -c 'mkdir -p /zap/wrk && zap-baseline.py -t "$TARGET_URL" -r zap-baseline.html -J zap-baseline.json -w zap-baseline.md'
+            rc=$?
+            docker cp zap-baseline:/zap/wrk/. zap-reports/ || true
+            docker rm -f zap-baseline
+            exit $rc
+          ''')
+          echo "ZAP baseline exit code: ${rc}"
+          // 0 = clean, 1 = FAIL rules, 2 = warnings, 3 = scan error
+          if (rc == 2) {
+            unstable('ZAP baseline found warnings')
+          } else if (rc != 0) {
+            error("ZAP baseline failed (exit ${rc})")
+          }
+        }
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'zap-reports/*', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'zap-reports',
+            reportFiles: 'zap-baseline.html',
+            reportName: 'ZAP Baseline Report',
+            keepAll: true,
+            allowMissing: true,
+            alwaysLinkToLastBuild: true
+          ])
+        }
+      }
+    }
+
+    stage('OWASP ZAP Active Scan') {
+      when { expression { params.ACTIVE_SCAN } }
+      options { timeout(time: 40, unit: 'MINUTES') }
+      steps {
+        script {
+          def rc = sh(returnStatus: true, script: '''
+            mkdir -p zap-reports
+            docker rm -f zap-full juice-shop 2>/dev/null || true
+            docker network create zap-net 2>/dev/null || true
+
+            # Start a throwaway vulnerable target on a private network
+            docker run -d --name juice-shop --network zap-net bkimminich/juice-shop
+
+            # Wait up to ~2 minutes for it to answer
+            ready=0
+            for i in $(seq 1 40); do
+              if docker run --rm --network zap-net curlimages/curl -sf http://juice-shop:3000 >/dev/null; then
+                ready=1; break
+              fi
+              sleep 3
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "Juice Shop did not start"
+              exit 3
+            fi
+
+            docker run --name zap-full --network zap-net \
+              ghcr.io/zaproxy/zaproxy:stable \
+              sh -c 'mkdir -p /zap/wrk && zap-full-scan.py -t http://juice-shop:3000 -m 3 -r zap-full.html -J zap-full.json'
+            rc=$?
+            docker cp zap-full:/zap/wrk/. zap-reports/ || true
+            exit $rc
+          ''')
+          echo "ZAP active scan exit code: ${rc}"
+          // Juice Shop is deliberately vulnerable, so FAIL (1) and WARN (2) both mark the build unstable
+          if (rc == 1 || rc == 2) {
+            unstable('ZAP active scan found issues')
+          } else if (rc != 0) {
+            error("ZAP active scan failed (exit ${rc})")
+          }
+        }
+      }
+      post {
+        always {
+          sh '''
+            docker rm -f zap-full juice-shop 2>/dev/null || true
+            docker network rm zap-net 2>/dev/null || true
+          '''
+          archiveArtifacts artifacts: 'zap-reports/*', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'zap-reports',
+            reportFiles: 'zap-full.html',
+            reportName: 'ZAP Active Scan Report',
+            keepAll: true,
+            allowMissing: true
+          ])
+        }
+      }
+    }
   }
 
   post {
     success { echo 'pipeline OK' }
+    unstable { echo 'pipeline finished with warnings (check the ZAP reports)' }
     failure { echo 'pipeline failed, check the stage logs' }
   }
 }
