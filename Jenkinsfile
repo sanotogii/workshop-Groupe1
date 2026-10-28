@@ -24,7 +24,9 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
         script {
-          def key = (env.GIT_BRANCH ==~ /(origin\/)?main/) ? 'learn-actions' : 'learn-actions-workshop-3'
+          // main -> learn-actions ; autre branche -> learn-actions-<branche> (ex. learn-actions-workshop-4)
+          def branch = (env.GIT_BRANCH ?: 'main').replaceFirst(/^origin\//, '')
+          def key = (branch == 'main') ? 'learn-actions' : "learn-actions-${branch}"
           withSonarQubeEnv('sonarqube') {
             sh "${tool 'sonar-scanner'}/bin/sonar-scanner -Dsonar.projectKey=${key} -Dsonar.projectName=${key}"
           }
@@ -87,6 +89,7 @@ pipeline {
       }
     }
     stage('OWASP ZAP Baseline') {
+      environment { TARGET_URL = "${params.TARGET_URL}" }
       steps {
         sh '''
           mkdir -p zap-reports
@@ -94,11 +97,11 @@ pipeline {
 
           set +e
           docker run --name zap-baseline -u root -t ghcr.io/zaproxy/zaproxy:stable \
-            bash -c "mkdir -p /zap/wrk && zap-baseline.py -t https://learn-action.khalidlab.tech -r zap-baseline.html -I"
+            bash -c "mkdir -p /zap/wrk && zap-baseline.py -t $TARGET_URL -r zap-baseline.html -J zap-baseline.json -I"
           rc=$?
           set -e
 
-          docker cp zap-baseline:/zap/wrk/zap-baseline.html zap-reports/ || true
+          docker cp zap-baseline:/zap/wrk/. zap-reports/ || true
           docker rm -f zap-baseline || true
 
           echo "ZAP baseline exit code: $rc"
@@ -108,7 +111,14 @@ pipeline {
       }
       post {
         always {
-          archiveArtifacts artifacts: 'zap-reports/*.html', allowEmptyArchive: true
+          archiveArtifacts artifacts: 'zap-reports/zap-baseline.*', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'zap-reports',
+            reportFiles: 'zap-baseline.html',
+            reportName: 'ZAP Baseline Report',
+            keepAll: true,
+            allowMissing: true
+          ])
         }
       }
     }
