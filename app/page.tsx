@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import "./chat.css";
 import LoadingSteps from "./components/LoadingSteps";
+import WelcomeNotice from "./components/WelcomeNotice";
 
 type Kind = "pdf" | "image" | "html" | "other";
 type Theme = "light" | "dark";
@@ -554,6 +555,8 @@ export default function Home() {
 
   return (
     <div className="shell">
+    <WelcomeNotice />
+
       {/* ---------- sidebar ---------- */}
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="side-head">
@@ -628,7 +631,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="thread">
+        <main className={`thread ${messages.length === 0 ? "is-empty" : ""}`}>
           {messages.length === 0 ? (
             <div className="empty">
               <div className="spark big">✻</div>

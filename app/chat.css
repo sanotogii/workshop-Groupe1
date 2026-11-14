@@ -110,6 +110,16 @@ button { font: inherit; }
 
 /* ---------- thread ---------- */
 .thread { flex: 1; overflow-y: auto; }
+.thread.is-empty {
+  background:
+    radial-gradient(820px 560px at 50% 48%, rgba(217, 119, 87, 0.1), transparent 64%),
+    radial-gradient(520px 340px at 50% 48%, rgba(217, 119, 87, 0.05), transparent 60%);
+}
+:root[data-theme="dark"] .thread.is-empty {
+  background:
+    radial-gradient(820px 560px at 50% 48%, rgba(217, 119, 87, 0.14), transparent 64%),
+    radial-gradient(520px 340px at 50% 48%, rgba(217, 119, 87, 0.07), transparent 60%);
+}
 .messages {
   max-width: 740px;
   margin: 0 auto;
