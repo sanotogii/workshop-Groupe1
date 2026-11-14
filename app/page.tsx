@@ -10,10 +10,12 @@ type Option = { fileId?: string; fileName: string };
 type FileInfo = {
   key: string;
   fileName: string;
-  url: string;
+  url: string; // blob: URL for stored files, or the Drive link for remote ones
   kind: Kind;
   label: string;
   size: number;
+  remote?: boolean; // true = Google Drive link (nothing stored in the browser)
+  previewUrl?: string; // Drive embed URL (…/preview), only if the type can be previewed
 };
 type Msg = {
   id: string;
@@ -61,6 +63,25 @@ const LABELS: Record<string, string> = {
   html: "HTML",
 };
 
+// Extensions Google Drive can render in its embedded /preview viewer
+const DRIVE_PREVIEWABLE = new Set([
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "doc",
+  "docx",
+  "ppt",
+  "pptx",
+  "xls",
+  "xlsx",
+  "txt",
+  "csv",
+]);
+
 /* ---------- IndexedDB (files are stored here, chat text in localStorage) ---------- */
 let dbPromise: Promise<IDBDatabase> | null = null;
 const getDB = () => {
@@ -103,6 +124,8 @@ async function delBlobs(keys: string[]) {
 }
 
 /* ---------- file helpers ---------- */
+const extOf = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
+
 function kindOf(ext: string, mime: string): Kind {
   if (mime === "application/pdf" || ext === "pdf") return "pdf";
   if (
@@ -120,12 +143,15 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const fileMeta = (f: FileInfo) =>
+  f.remote ? `${f.label} · Google Drive` : `${f.label} · ${formatSize(f.size)}`;
+
 function buildFile(
   b64: string,
   mimeIn: string,
   fileName: string,
 ): { file: FileInfo; blob: Blob } {
-  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const ext = extOf(fileName);
   const kind = kindOf(ext, mimeIn);
   const mime =
     kind === "pdf"
@@ -145,6 +171,26 @@ function buildFile(
       label: LABELS[ext] ?? (ext ? ext.toUpperCase() : "File"),
       size: bytes.length,
     },
+  };
+}
+
+/* Google Drive link -> FileInfo with an embeddable preview URL */
+function buildLink(url: string, fileName: string): FileInfo {
+  const ext = extOf(fileName);
+  const id =
+    url.match(/\/d\/([\w-]+)/)?.[1] ?? url.match(/[?&]id=([\w-]+)/)?.[1];
+  return {
+    key: uid(),
+    fileName,
+    url,
+    kind: kindOf(ext, ""),
+    label: LABELS[ext] ?? (ext ? ext.toUpperCase() : "File"),
+    size: 0,
+    remote: true,
+    previewUrl:
+      id && DRIVE_PREVIEWABLE.has(ext)
+        ? `https://drive.google.com/file/d/${id}/preview`
+        : undefined,
   };
 }
 
@@ -223,7 +269,7 @@ function FileCard({
       disabled={gone}
     >
       <span className={`file-thumb ${file.kind}`}>
-        {file.kind === "image" && !gone ? (
+        {file.kind === "image" && !gone && !file.remote ? (
           <img src={file.url} alt="" />
         ) : (
           <DocIcon />
@@ -232,9 +278,7 @@ function FileCard({
       <span className="file-info">
         <span className="file-name">{file.fileName}</span>
         <span className="file-meta">
-          {gone
-            ? "No longer stored in this browser"
-            : `${file.label} · ${formatSize(file.size)}`}
+          {gone ? "No longer stored in this browser" : fileMeta(file)}
         </span>
       </span>
     </button>
@@ -264,7 +308,7 @@ export default function Home() {
     .filter((c) => c.messages.length > 0)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
-  /* load saved chats + rebuild file URLs from IndexedDB */
+  /* load saved chats + rebuild file URLs from IndexedDB (Drive links are kept as-is) */
   useEffect(() => {
     (async () => {
       let saved: Chat[] = [];
@@ -273,7 +317,7 @@ export default function Home() {
       } catch {}
       for (const c of saved) {
         for (const m of c.messages) {
-          if (!m.file) continue;
+          if (!m.file || m.file.remote) continue;
           try {
             const blob = await getBlob(m.file.key);
             m.file.url = blob ? URL.createObjectURL(blob) : "";
@@ -299,7 +343,7 @@ export default function Home() {
     })();
   }, []);
 
-  /* save chats (text only; files live in IndexedDB) */
+  /* save chats (blob URLs are dropped; Drive links are real URLs so they are kept) */
   useEffect(() => {
     if (!loaded) return;
     const toSave = chats
@@ -307,7 +351,7 @@ export default function Home() {
       .map((c) => ({
         ...c,
         messages: c.messages.map((m) =>
-          m.file ? { ...m, file: { ...m.file, url: "" } } : m,
+          m.file && !m.file.remote ? { ...m, file: { ...m.file, url: "" } } : m,
         ),
       }));
     try {
@@ -387,7 +431,7 @@ export default function Home() {
     if (!c) return;
     const keys: string[] = [];
     c.messages.forEach((m) => {
-      if (m.file) {
+      if (m.file && !m.file.remote) {
         keys.push(m.file.key);
         if (m.file.url) URL.revokeObjectURL(m.file.url);
       }
@@ -446,7 +490,18 @@ export default function Home() {
       const raw = await res.json();
       const data = Array.isArray(raw) ? raw[0] : raw;
 
-      if (data?.type === "file" && data.base64) {
+      if (data?.type === "link" && data.url) {
+        // New: workflow returns a Google Drive link
+        const file = buildLink(data.url, data.fileName || "file");
+        append({
+          id: uid(),
+          role: "bot",
+          text: data.message || "Here is your file.",
+          file,
+        });
+        if (activeRef.current === chatId) openPreview(file);
+      } else if (data?.type === "file" && data.base64) {
+        // Old behaviour: workflow returns the file itself as base64
         const { file, blob } = buildFile(
           data.base64,
           data.mimeType || "",
@@ -624,7 +679,7 @@ export default function Home() {
 
                       {f && (
                         <>
-                          {f.kind === "image" && f.url && (
+                          {f.kind === "image" && f.url && !f.remote && (
                             <button
                               className="inline-img"
                               onClick={() => openPreview(f)}
@@ -683,9 +738,11 @@ export default function Home() {
               </svg>
             </button>
           </div>
-<p className="hint">
-  Enter to send · Shift+Enter for a new line · <a href="/privacy">Privacy</a>
-</p>        </footer>
+          <p className="hint">
+            Enter to send · Shift+Enter for a new line ·{" "}
+            <a href="/privacy">Privacy</a>
+          </p>
+        </footer>
       </div>
 
       {/* ---------- preview panel ---------- */}
@@ -694,9 +751,7 @@ export default function Home() {
           <div className="panel-head">
             <div className="panel-title">
               <span className="panel-name">{preview.fileName}</span>
-              <span className="panel-meta">
-                {preview.label} · {formatSize(preview.size)}
-              </span>
+              <span className="panel-meta">{fileMeta(preview)}</span>
             </div>
             <div className="panel-actions">
               <a
@@ -704,17 +759,28 @@ export default function Home() {
                 href={preview.url}
                 target="_blank"
                 rel="noreferrer"
-                title="Open in new tab"
+                title={preview.remote ? "Open in Google Drive" : "Open in new tab"}
               >
                 <ExternalIcon />
               </a>
-              <a
-                className="btn-primary"
-                href={preview.url}
-                download={preview.fileName}
-              >
-                <DownloadIcon /> Download
-              </a>
+              {preview.remote ? (
+                <a
+                  className="btn-primary"
+                  href={preview.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalIcon /> Open in Drive
+                </a>
+              ) : (
+                <a
+                  className="btn-primary"
+                  href={preview.url}
+                  download={preview.fileName}
+                >
+                  <DownloadIcon /> Download
+                </a>
+              )}
               <button
                 className="icon-btn"
                 onClick={() => setPreview(null)}
@@ -726,14 +792,45 @@ export default function Home() {
           </div>
 
           <div className="panel-body">
-            {preview.kind === "pdf" && (
+            {/* Google Drive link: embedded Drive viewer */}
+            {preview.remote && preview.previewUrl && (
+              <iframe
+                key={preview.previewUrl}
+                src={preview.previewUrl}
+                title={preview.fileName}
+                allow="autoplay"
+              />
+            )}
+            {preview.remote && !preview.previewUrl && (
+              <div className="no-preview">
+                <span className="file-thumb other big-thumb">
+                  <DocIcon />
+                </span>
+                <h3>No preview available</h3>
+                <p>
+                  {preview.label} files can&apos;t be previewed here. Open it in
+                  Google Drive to view or download it.
+                </p>
+                <a
+                  className="btn-primary"
+                  href={preview.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalIcon /> Open in Drive
+                </a>
+              </div>
+            )}
+
+            {/* Stored file (base64 from the old workflow) */}
+            {!preview.remote && preview.kind === "pdf" && (
               <iframe
                 key={preview.url}
                 src={`${preview.url}#view=FitH`}
                 title={preview.fileName}
               />
             )}
-            {preview.kind === "html" && (
+            {!preview.remote && preview.kind === "html" && (
               <iframe
                 key={preview.url}
                 sandbox=""
@@ -741,7 +838,7 @@ export default function Home() {
                 title={preview.fileName}
               />
             )}
-            {preview.kind === "image" && (
+            {!preview.remote && preview.kind === "image" && (
               <div className={`img-stage ${zoomed ? "zoomed" : ""}`}>
                 <img
                   src={preview.url}
@@ -750,7 +847,7 @@ export default function Home() {
                 />
               </div>
             )}
-            {preview.kind === "other" && (
+            {!preview.remote && preview.kind === "other" && (
               <div className="no-preview">
                 <span className="file-thumb other big-thumb">
                   <DocIcon />
