@@ -1,4 +1,3 @@
-
 /* ---------- backdrop ---------- */
 
 .wn-backdrop {
@@ -212,7 +211,7 @@
 
 .wn-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
 
   margin-top: 30px;
@@ -250,6 +249,78 @@
 }
 
 .wn-ok:focus-visible {
+  outline: 2px solid var(--accent, #d97757);
+  outline-offset: 3px;
+}
+
+/* ---------- two-step navigation ---------- */
+
+.wn-step {
+  animation: wn-fade 0.18s ease-out;
+}
+
+.wn-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.wn-dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wn-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: var(--border, #e6e3d8);
+  cursor: pointer;
+
+  transition:
+    width 0.2s ease,
+    background 0.2s ease;
+}
+
+.wn-dot.is-active {
+  width: 22px;
+  background: var(--accent, #d97757);
+}
+
+.wn-dot:focus-visible {
+  outline: 2px solid var(--accent, #d97757);
+  outline-offset: 3px;
+}
+
+.wn-back {
+  min-height: 44px;
+  padding: 10px 20px;
+
+  border: 1px solid var(--border, #e6e3d8);
+  border-radius: 11px;
+
+  background: transparent;
+  color: var(--text, #252421);
+
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.wn-back:hover {
+  background: var(--user, #f0eee6);
+}
+
+.wn-back:focus-visible {
   outline: 2px solid var(--accent, #d97757);
   outline-offset: 3px;
 }
@@ -341,11 +412,14 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wn-backdrop,
-  .wn-card {
+  .wn-card,
+  .wn-step {
     animation: none;
   }
 
-  .wn-ok {
+  .wn-ok,
+  .wn-dot,
+  .wn-back {
     transition: none;
   }
 }
