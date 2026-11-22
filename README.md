@@ -1,5 +1,5 @@
 <!--
-CAPTURES A FOURNIR (docs/images/ ; Workshop 3 en .jpeg, Workshops 4 et 5 en .png) : supprimez ce commentaire une fois terminé.
+CAPTURES A FOURNIR (docs/images/ ; Workshop 3 en .jpeg, Workshops 4 à 6 en .png) : supprimez ce commentaire une fois terminé.
 
 Workshop 3 :
  11-dependabot-reglages-github.jpeg      Settings > Advanced Security : 4 options Dependabot activées
@@ -30,14 +30,21 @@ Workshop 5 (.png) :
  40-trivy-image-vulnerabilites.png           Console : notes-app:3 (debian 12.15), Total: 13 (HIGH: 13, CRITICAL: 0)
  41-trivy-imagemagick.png                    Console : tableau des vulnérabilités, paquets libmagickcore / ImageMagick
 
+Workshop 6 (.png) :
+ 42-wazuh-conteneurs.png                     Terminal : docker compose ps (manager, indexer, dashboard Up)
+ 43-wazuh-agent-actif.png                    Dashboard : page Agents, agent de la VM "Active"
+ 44-wazuh-ssh-bruteforce.png                 Dashboard : alertes sshd 5710 / 5712 (force brute)
+ 45-wazuh-elevation-privileges.png           Dashboard : alertes sudo / nouvel utilisateur (5402, 5902)
+ 46-wazuh-vulnerabilites.png                 Dashboard : Vulnerability Detection (CVE par sévérité)
+
 Éléments à compléter dans le texte : repérez les mentions [À COMPLÉTER ...].
 -->
 
 <div align="center">
 
-# Workshops 1 à 5 : SAST, SCA, DAST et sécurité des conteneurs dans un pipeline CI/CD Jenkins
+# Workshops 1 à 6 : SAST, SCA, DAST, sécurité des conteneurs et supervision dans une chaîne DevSecOps
 
-**Analyse statique du code (SonarQube, Semgrep), analyse des dépendances (Dependabot, OWASP Dependency-Check) tests dynamiques (OWASP ZAP) et analyse des images Docker (Trivy)**
+**Analyse statique du code (SonarQube, Semgrep), analyse des dépendances (Dependabot, OWASP Dependency-Check) tests dynamiques (OWASP ZAP), analyse des images Docker (Trivy) et détection des menaces (Wazuh)**
 
 ![SonarQube](https://img.shields.io/badge/SonarQube-Community-4E9BCD?logo=sonarqube&logoColor=white)
 ![Semgrep](https://img.shields.io/badge/Semgrep-SAST-2DB67C?logo=semgrep&logoColor=white)
@@ -46,6 +53,7 @@ Workshop 5 (.png) :
 ![OWASP ZAP](https://img.shields.io/badge/OWASP%20ZAP-DAST-00549E?logo=owasp&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-conteneurs-1904DA?logo=aqua&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-image-2496ED?logo=docker&logoColor=white)
+![Wazuh](https://img.shields.io/badge/Wazuh-SIEM%20%2F%20XDR-3595F9)
 ![Jenkins](https://img.shields.io/badge/Jenkins-CI%2FCD-D24939?logo=jenkins&logoColor=white)
 ![Git](https://img.shields.io/badge/Git-GitHub-181717?logo=github&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-TypeScript-000000?logo=nextdotjs&logoColor=white)
@@ -61,6 +69,7 @@ Ce dépôt documente plusieurs workshops réalisés sur la même chaîne CI/CD.
 - **Workshop 3 (SCA)** : le même pipeline est étendu avec **OWASP Dependency-Check**, qui recherche les vulnérabilités connues dans les bibliothèques npm, et **Dependabot**, qui propose automatiquement des pull requests de mise à jour. Les changements ont d'abord été testés sur une branche `workshop-3` avant d'être fusionnés dans `main`.
 - **Workshop 4 (DAST)** : le pipeline est complété par **OWASP ZAP**, qui teste l'application **en fonctionnement** : un **scan passif** (baseline) recherche les cookies mal protégés et les headers de sécurité manquants, et un **scan actif**, lancé à la demande contre une cible de test isolée (**OWASP Juice Shop**), recherche des failles XSS et des injections. Les changements sont développés sur la branche `workshop-4`.
 - **Workshop 5 (sécurité des conteneurs)** : l'application est empaquetée dans une **image Docker**, que **Trivy** analyse à chaque build (vulnérabilités du système et des paquets npm, secrets, mauvaises configurations du Dockerfile). Le pipeline est **bloqué** si l'image contient des vulnérabilités HIGH ou CRITICAL corrigeables, ou si le Dockerfile présente une mauvaise configuration grave. Les changements sont développés sur la branche `Workshop-5`.
+- **Workshop 6 (supervision et détection des menaces)** : **Wazuh** est déployé avec Docker sur la VM qui héberge la chaîne CI/CD, et un **agent** surveille cette machine. Des scénarios d'attaque reproductibles (force brute SSH, élévation de privilèges, modification de fichiers système) vérifient que les intrusions sont détectées, et le module *Vulnerability Detection* liste les CVE des paquets installés. Les changements sont développés sur la branche `workshop-6`.
 
 Jenkins et SonarQube tournent en conteneurs Docker sur une instance **Google Cloud**, provisionnée avec **Ansible** et exposée via un **Cloudflare Tunnel**.
 
@@ -69,7 +78,8 @@ Jenkins et SonarQube tournent en conteneurs Docker sur une instance **Google Clo
 - ce qu'est le SAST, ce qu'est le SCA, et pourquoi on les exécute avant le déploiement ;
 - ce qu'est le DAST, et la différence entre un scan passif et un scan actif ;
 - comment analyser une image Docker avec Trivy et bloquer le pipeline selon la sévérité ;
-- ce que SonarQube, Semgrep, Dependency-Check, Dependabot, OWASP ZAP et Trivy détectent, et en quoi ils se complètent ;
+- comment superviser une machine avec Wazuh et y détecter des tentatives d'intrusion ;
+- ce que SonarQube, Semgrep, Dependency-Check, Dependabot, OWASP ZAP, Trivy et Wazuh détectent, et en quoi ils se complètent ;
 - comment l'infrastructure (GCP, Ansible, Docker, Cloudflare Tunnel) a été montée ;
 - comment le pipeline Jenkins enchaîne analyses, Quality Gate, contrôle des dépendances et déploiement ;
 - comment tester un changement de pipeline sur une branche sans toucher à la production ;
@@ -91,7 +101,8 @@ Jenkins et SonarQube tournent en conteneurs Docker sur une instance **Google Clo
    - [2.6 Qu'est-ce que le SCA ?](#26-quest-ce-que-le-sca-)
    - [2.7 Qu'est-ce que le DAST ?](#27-quest-ce-que-le-dast-)
    - [2.8 Qu'est-ce que la sécurité des conteneurs ?](#28-quest-ce-que-la-sécurité-des-conteneurs-)
-   - [2.9 Objectifs pédagogiques](#29-objectifs-pédagogiques)
+   - [2.9 Qu'est-ce que la supervision de sécurité ?](#29-quest-ce-que-la-supervision-de-sécurité-)
+   - [2.10 Objectifs pédagogiques](#210-objectifs-pédagogiques)
 - [3. Architecture du projet](#3-architecture-du-projet)
    - [3.1 Vue d'ensemble](#31-vue-densemble)
    - [3.2 Flux d'analyse](#32-flux-danalyse)
@@ -146,19 +157,29 @@ Jenkins et SonarQube tournent en conteneurs Docker sur une instance **Google Clo
    - [10.6 Résultats et interprétation](#106-résultats-et-interprétation)
    - [10.7 Remédiation](#107-remédiation)
    - [10.8 Seuil de blocage : bonnes pratiques](#108-seuil-de-blocage--bonnes-pratiques)
-- [11. Résultats et comparaison](#11-résultats-et-comparaison)
-   - [11.1 Synthèse](#111-synthèse)
-   - [11.2 Problèmes SonarQube identifiés](#112-problèmes-sonarqube-identifiés)
-   - [11.3 Comparaison des outils sur ce projet](#113-comparaison-des-outils-sur-ce-projet)
-- [12. Limites et recommandations](#12-limites-et-recommandations)
-   - [12.1 Limites du SAST](#121-limites-du-sast)
-   - [12.2 Limites du SCA](#122-limites-du-sca)
-   - [12.3 Limites du DAST](#123-limites-du-dast)
-   - [12.4 Limites de l'analyse des conteneurs](#124-limites-de-lanalyse-des-conteneurs)
-   - [12.5 Limites propres aux workshops](#125-limites-propres-aux-workshops)
-   - [12.6 Recommandations pour ce projet](#126-recommandations-pour-ce-projet)
-- [13. Conclusion](#13-conclusion)
-- [14. Références](#14-références)
+- [11. Workshop 6, supervision et détection des menaces avec Wazuh](#11-workshop-6-supervision-et-détection-des-menaces-avec-wazuh)
+   - [11.1 Contexte et objectif](#111-contexte-et-objectif)
+   - [11.2 Qu'est-ce que Wazuh ?](#112-quest-ce-que-wazuh-)
+   - [11.3 Architecture](#113-architecture)
+   - [11.4 Déploiement de Wazuh avec Docker](#114-déploiement-de-wazuh-avec-docker)
+   - [11.5 Configuration de l'agent](#115-configuration-de-lagent)
+   - [11.6 Détection des tentatives d'intrusion](#116-détection-des-tentatives-dintrusion)
+   - [11.7 Analyse des vulnérabilités (CVE)](#117-analyse-des-vulnérabilités-cve)
+   - [11.8 Réponse aux incidents et bonnes pratiques](#118-réponse-aux-incidents-et-bonnes-pratiques)
+- [12. Résultats et comparaison](#12-résultats-et-comparaison)
+   - [12.1 Synthèse](#121-synthèse)
+   - [12.2 Problèmes SonarQube identifiés](#122-problèmes-sonarqube-identifiés)
+   - [12.3 Comparaison des outils sur ce projet](#123-comparaison-des-outils-sur-ce-projet)
+- [13. Limites et recommandations](#13-limites-et-recommandations)
+   - [13.1 Limites du SAST](#131-limites-du-sast)
+   - [13.2 Limites du SCA](#132-limites-du-sca)
+   - [13.3 Limites du DAST](#133-limites-du-dast)
+   - [13.4 Limites de l'analyse des conteneurs](#134-limites-de-lanalyse-des-conteneurs)
+   - [13.5 Limites de la supervision](#135-limites-de-la-supervision)
+   - [13.6 Limites propres aux workshops](#136-limites-propres-aux-workshops)
+   - [13.7 Recommandations pour ce projet](#137-recommandations-pour-ce-projet)
+- [14. Conclusion](#14-conclusion)
+- [15. Références](#15-références)
 
 ---
 
@@ -172,6 +193,7 @@ Jenkins et SonarQube tournent en conteneurs Docker sur une instance **Google Clo
 | **Workshop 3** | Sécurité des dépendances et librairies (SCA) : Dependabot et OWASP Dependency-Check |
 | **Workshop 4** | Tests de sécurité dynamiques et pentest automatisés (DAST) : OWASP ZAP |
 | **Workshop 5** | Sécurité des conteneurs : sécurisation des images Docker avec Trivy |
+| **Workshop 6** | Monitoring, logging et réponse aux incidents : supervision et détection des menaces avec Wazuh |
 | **Réalisé par** | LAZRAG Khalid · ERAOUI Anass · BOUTEFAH KHATIB Fatima Zohra |
 | **Responsable** | Pr. KOUISSI Mohamed |
 
@@ -200,6 +222,7 @@ Une analyse lancée manuellement finit par être oubliée. Intégrée au pipelin
 | **OWASP Dependency-Check** | Analyse de composition logicielle (SCA) des dépendances npm | Compare les bibliothèques déclarées dans `package-lock.json` à la base de vulnérabilités connues (NVD), score **CVSS**, rapports HTML et XML, seuil de blocage configurable |
 | **Dependabot** | Automatisation des mises à jour de dépendances (service GitHub) | Ouvre des **pull requests** de mise à jour, alertes de sécurité sur les dépendances vulnérables |
 | **OWASP ZAP** | Scanner de sécurité dynamique (DAST), exécuté en conteneur Docker | Scan passif (headers, cookies) et scan actif (XSS, injections) d'une application en fonctionnement, rapports HTML et JSON |
+| **Wazuh** | Plateforme de supervision et de sécurité (SIEM / XDR), déployée avec Docker | Collecte des journaux par un agent, règles de détection (SSH, `sudo`, intégrité des fichiers), inventaire des CVE de la machine, tableau de bord |
 | **Trivy** | Scanner de sécurité des images de conteneurs (Aqua Security) | CVE du système de base et des paquets npm, secrets, mauvaises configurations du Dockerfile ; seuil de blocage par sévérité |
 | **OWASP Juice Shop** | Application web volontairement vulnérable | Cible de test isolée pour le scan actif, à la place de l'application réelle |
 | **Jenkins** | Orchestrateur CI/CD | Déclenchement automatique par webhook GitHub, enchaînement des étapes, arrêt du pipeline en cas d'échec |
@@ -225,7 +248,11 @@ Le **DAST** (*Dynamic Application Security Testing*) teste l'application **penda
 
 Une **image de conteneur** embarque l'application **et** tout son environnement d'exécution : système de base, bibliothèques système, runtime et dépendances. Sécuriser une image consiste à vérifier ce qu'elle contient (vulnérabilités connues, secrets) et comment elle est construite (mauvaises configurations du Dockerfile), **avant** de l'exécuter. Le Workshop 5 l'illustre avec Trivy (voir [§ 10](#10-workshop-5-sécurité-des-conteneurs-avec-trivy)).
 
-### 2.9 Objectifs pédagogiques
+### 2.9 Qu'est-ce que la supervision de sécurité ?
+
+Les contrôles des Workshops 1 à 5 ont lieu **avant** la mise en production. Une fois les machines en service, il faut aussi **observer** ce qui s'y passe : connexions, élévations de privilèges, fichiers modifiés, logiciels vulnérables. Une plateforme de supervision collecte ces événements, les compare à des règles de détection et lève des **alertes** qui déclenchent la réponse aux incidents. Le Workshop 6 l'illustre avec Wazuh (voir [§ 11](#11-workshop-6-supervision-et-détection-des-menaces-avec-wazuh)).
+
+### 2.10 Objectifs pédagogiques
 
 1. Déployer une infrastructure CI/CD (Jenkins + SonarQube) de façon reproductible.
 2. Intégrer SonarQube et Semgrep dans un pipeline Jenkins.
@@ -241,6 +268,9 @@ Une **image de conteneur** embarque l'application **et** tout son environnement 
 12. Analyser une image Docker avec Trivy : vulnérabilités, mauvaises configurations et secrets.
 13. Interpréter les résultats HIGH et CRITICAL et proposer des remédiations (image de base, durcissement du Dockerfile).
 14. Intégrer Trivy au pipeline avec un seuil de blocage basé sur la sévérité.
+15. Déployer Wazuh avec Docker et configurer un agent de supervision.
+16. Détecter des tentatives d'intrusion (force brute SSH, élévation de privilèges) et des modifications de fichiers système.
+17. Analyser les vulnérabilités d'un système à travers les CVE identifiées par Wazuh.
 
 ---
 
@@ -256,7 +286,7 @@ Une **image de conteneur** embarque l'application **et** tout son environnement 
 
 ### 3.2 Flux d'analyse
 
-Le diagramme suivant décrit la chaîne complète, Workshops 3 à 5 inclus.
+Le diagramme suivant décrit la chaîne CI/CD, Workshops 3 à 5 inclus ; la supervision par Wazuh (Workshop 6) est décrite au [§ 11.3](#113-architecture).
 
 ```mermaid
 flowchart LR
@@ -312,6 +342,7 @@ flowchart LR
 | Cible de scan actif | OWASP Juice Shop (`bkimminich/juice-shop`), réseau Docker `zap-net` | § 9.5 |
 | Image de l'application | `Dockerfile` (base `node:22`, utilisateur `node`), image `notes-app:<build>` | § 10.4 |
 | Analyse des conteneurs | Trivy (binaire dans `/var/jenkins_home/trivy-bin`, cache dans `/var/jenkins_home/trivy-cache`) | § 10.5 |
+| Supervision | Wazuh 4.14.10 single-node en conteneurs (`/opt/wazuh-docker`), agent `wazuh-agent` 4.14.10 sur l'hôte | § 11.4 et 11.5 |
 
 ---
 
@@ -530,7 +561,7 @@ ansible-playbook -i inventory.ini playbook.yml   # 2. appliquer le playbook
 
 ![Terminal : ansible ping SUCCESS puis lancement du playbook Install Docker, then run Jenkins and SonarQube as containers](docs/images/04-provisionnement-ansible.png)
 
-*Explication :* le `ping` Ansible renvoie `SUCCESS` / `pong`. Le playbook démarre ensuite la play **« Install Docker, then run Jenkins and SonarQube as containers »** : il installe Docker puis lance Jenkins et SonarQube en conteneurs. Un avertissement indique que la collection `community.docker` ne prend pas officiellement en charge **Ansible 2.16.3** ; il n'a pas empêché l'exécution visible ici, mais il signale un risque de compatibilité à corriger (voir [§ 12](#12-limites-et-recommandations)). La capture s'arrête à la tâche *Gathering Facts* : le récapitulatif final (`PLAY RECAP`) n'y figure pas.
+*Explication :* le `ping` Ansible renvoie `SUCCESS` / `pong`. Le playbook démarre ensuite la play **« Install Docker, then run Jenkins and SonarQube as containers »** : il installe Docker puis lance Jenkins et SonarQube en conteneurs. Un avertissement indique que la collection `community.docker` ne prend pas officiellement en charge **Ansible 2.16.3** ; il n'a pas empêché l'exécution visible ici, mais il signale un risque de compatibilité à corriger (voir [§ 13](#13-limites-et-recommandations)). La capture s'arrête à la tâche *Gathering Facts* : le récapitulatif final (`PLAY RECAP`) n'y figure pas.
 
 > **Intérêt de l'approche :** l'infrastructure est décrite sous forme de code ; elle peut être reconstruite à l'identique sur une nouvelle instance.
 
@@ -571,7 +602,7 @@ Dans le dépôt GitHub : **Settings → Webhooks → Add webhook**.
 
 ![Configuration du webhook GitHub : Payload URL https://jenkins.khalidlab.tech/github-webhook/, content type application/json](docs/images/07-webhook-github.png)
 
-*Explication :* GitHub envoie un `POST` au format `application/json` vers `https://jenkins.khalidlab.tech/github-webhook/`, point d'entrée du plugin GitHub de Jenkins. C'est ce webhook qui déclenche le pipeline à chaque push (la figure 10 confirme un build *« Started by GitHub push »*). Le champ **Secret** est vide : la signature des requêtes n'est donc pas vérifiée (voir [§ 12.6](#126-recommandations-pour-ce-projet)).
+*Explication :* GitHub envoie un `POST` au format `application/json` vers `https://jenkins.khalidlab.tech/github-webhook/`, point d'entrée du plugin GitHub de Jenkins. C'est ce webhook qui déclenche le pipeline à chaque push (la figure 10 confirme un build *« Started by GitHub push »*). Le champ **Secret** est vide : la signature des requêtes n'est donc pas vérifiée (voir [§ 13.7](#137-recommandations-pour-ce-projet)).
 
 Ce même webhook sert pour toutes les branches : chaque job Jenkins ne construit que la branche déclarée dans son *Branch Specifier* (voir [§ 8.2](#82-stratégie-de-test-sur-une-branche)).
 
@@ -1097,7 +1128,7 @@ L'énoncé du Workshop 4 (chapitre 4, « Tests de sécurité dynamiques et pente
 | Lancer ZAP en mode **baseline scan** via Docker (scan passif) | Étape `OWASP ZAP Baseline` (`zap-baseline.py`, image `ghcr.io/zaproxy/zaproxy:stable`) |
 | Observer le rapport : cookies sans `HttpOnly` / `Secure`, headers manquants | Rapport HTML et JSON archivés et publiés dans Jenkins (§ 9.7) |
 | Si possible, **scan actif** sur une instance pré-prod (XSS, injections) | Étape `OWASP ZAP Active Scan` sur un conteneur **OWASP Juice Shop** jetable, jamais sur l'application réelle (§ 9.5) |
-| Discuter des résultats, des risques et de l'intégration du DAST dans un pipeline CI/CD | § 9.9, § 11 et § 12 |
+| Discuter des résultats, des risques et de l'intégration du DAST dans un pipeline CI/CD | § 9.9, § 12 et § 13 |
 
 ### 9.2 Qu'est-ce que le DAST ?
 
@@ -1760,9 +1791,212 @@ Après le commit `bc0e152`, l'analyse du Dockerfile passe ; l'image reste bloqu�
 
 ---
 
-## 11. Résultats et comparaison
+## 11. Workshop 6, supervision et détection des menaces avec Wazuh
 
-### 11.1 Synthèse
+### 11.1 Contexte et objectif
+
+L'énoncé du Workshop 6 (chapitre 6, « Monitoring, Logging et Réponse aux Incidents ») demande de découvrir et de manipuler **Wazuh**, une plateforme open source de supervision et de sécurité :
+
+| Point de l'énoncé | Réalisation dans ce dépôt |
+|---|---|
+| Déployer la solution avec Docker | Wazuh 4.14.10 en mode *single-node* (manager, indexer, dashboard) à partir du dépôt officiel `wazuh-docker` : `wazuh/deploy-wazuh.sh` |
+| Configurer des agents de supervision | Agent Wazuh installé sur la VM qui héberge Jenkins et SonarQube : `wazuh/install-agent.sh` |
+| Surveiller les événements de sécurité | Tableau de bord Wazuh : *Threat Hunting*, *File Integrity Monitoring* |
+| Détecter des tentatives d'intrusion (force brute SSH, élévation de privilèges…) | Scénarios reproductibles : `wazuh/simulate-attacks.sh` |
+| Analyser les vulnérabilités des systèmes à travers les CVE | Module *Vulnerability Detection* de Wazuh sur l'inventaire de paquets de la VM |
+
+Les Workshops 1 à 5 sécurisent l'application **avant** sa mise en production (code, dépendances, application en marche, image). Le Workshop 6 traite de ce qui se passe **après** : surveiller en continu la machine qui exécute la chaîne CI/CD, détecter les attaques et réagir.
+
+### 11.2 Qu'est-ce que Wazuh ?
+
+Wazuh est une plateforme de type **SIEM / XDR** : elle collecte les journaux et l'état des machines surveillées, les compare à des règles de détection et produit des **alertes** classées par niveau (de 0 à 15).
+
+| Composant | Rôle | Déploiement ici |
+|---|---|---|
+| **Agent** | Installé sur chaque machine surveillée : lit les journaux (`/var/log/auth.log`…), surveille l'intégrité des fichiers, inventorie les paquets | Paquet `wazuh-agent` sur la VM |
+| **Manager** | Reçoit les données des agents, applique les règles et les décodeurs, génère les alertes | Conteneur `wazuh/wazuh-manager:4.14.10` |
+| **Indexer** | Stocke et indexe les alertes (moteur basé sur OpenSearch) | Conteneur `wazuh/wazuh-indexer:4.14.10` |
+| **Dashboard** | Interface web de consultation et d'investigation | Conteneur `wazuh/wazuh-dashboard:4.14.10`, port 443 |
+
+| Fonction Wazuh utilisée | Ce qu'elle détecte |
+|---|---|
+| Analyse de journaux | Échecs de connexion SSH, utilisateurs inexistants, usage de `sudo` |
+| *File Integrity Monitoring* (FIM) | Modification de fichiers système sensibles (`/etc`, binaires) |
+| *Vulnerability Detection* | CVE affectant les paquets installés sur la machine |
+| *Security Configuration Assessment* (SCA) | Écarts par rapport à des référentiels de durcissement (CIS) |
+
+### 11.3 Architecture
+
+```mermaid
+flowchart LR
+    subgraph VM["Instance GCP (Docker)"]
+        AG["Agent Wazuh<br/>(hôte Debian)"]
+        LOG["Journaux auth.log,<br/>fichiers /etc, paquets"] --> AG
+        subgraph WZ["Wazuh single-node (conteneurs)"]
+            MG["Manager<br/>1514 / 1515"] --> IX["Indexer<br/>9200"]
+            IX --> DB["Dashboard<br/>443"]
+        end
+        AG -->|"événements chiffrés<br/>127.0.0.1:1514"| MG
+        JK["Jenkins / SonarQube<br/>(conteneurs existants)"]
+    end
+    ATT["Attaques simulées<br/>(SSH, sudo, FIM)"] --> LOG
+    CVE["Flux CVE Wazuh"] --> MG
+    ADM["Navigateur"] -->|"tunnel SSH :8443"| DB
+```
+
+- L'agent est installé **sur l'hôte**, pas dans un conteneur : c'est l'hôte qui reçoit les connexions SSH et qui exécute Jenkins, SonarQube et Docker.
+- Le manager publie ses ports sur l'hôte ; l'agent s'y connecte donc via `127.0.0.1`.
+- Le dashboard n'est **pas exposé sur Internet** : il est consulté à travers un tunnel SSH (§ 11.4).
+
+### 11.4 Déploiement de Wazuh avec Docker
+
+Les scripts sont dans le dossier `wazuh/` (exclu de l'image Docker de l'application par `.dockerignore`).
+
+**Étape 1 — Vérifier la VM** (ressources, Docker, ports libres) :
+
+```bash
+bash wazuh/check-vm.sh
+```
+
+Wazuh *single-node* demande au moins **4 Go de RAM** (l'indexer est lancé avec `-Xms1g -Xmx1g`), en plus de Jenkins et de SonarQube.
+
+[À COMPLÉTER : sortie de `check-vm.sh` : vCPU, RAM, disque, conteneurs déjà présents]
+
+**Étape 2 — Déployer Wazuh :**
+
+```bash
+sudo bash wazuh/deploy-wazuh.sh
+```
+
+| Étape du script | Rôle |
+|---|---|
+| `sysctl -w vm.max_map_count=262144` | Prérequis de l'indexer (déjà posé pour SonarQube) |
+| `git clone -b v4.14.10 …/wazuh-docker` | Dépôt officiel, **version fixée** |
+| `docker compose -f generate-indexer-certs.yml run --rm generator` | Génère les certificats TLS internes entre manager, indexer et dashboard |
+| `docker compose up -d` | Démarre les trois conteneurs |
+
+**Figure 42 — Conteneurs Wazuh en fonctionnement**
+
+![Terminal : docker compose ps, conteneurs wazuh.manager, wazuh.indexer et wazuh.dashboard à l'état Up](docs/images/42-wazuh-conteneurs.png)
+
+**Étape 3 — Accéder au dashboard** sans ouvrir le port 443 sur Internet, par un tunnel SSH depuis le poste local :
+
+```bash
+gcloud compute ssh <NOM_INSTANCE> --zone <ZONE> -- -L 8443:localhost:443
+```
+
+puis `https://localhost:8443` dans le navigateur (certificat auto-signé à accepter).
+
+> **Identifiants par défaut.** Le dashboard démarre avec `admin` / `SecretPassword` et l'API avec un mot de passe connu publiquement. Ils doivent être changés avant tout usage réel (procédure « Change the default passwords » de la documentation `wazuh-docker`).
+
+| Port | Service | Exposition |
+|---|---|---|
+| 443 | Dashboard | Tunnel SSH uniquement |
+| 1514 / 1515 | Communication et enregistrement des agents | Local (agent sur la même VM) |
+| 55000 | API du manager | Local |
+| 9200 | Indexer | Local |
+
+Le pare-feu GCP ne laisse passer que les ports explicitement autorisés : aucune règle n'a été ajoutée pour ces ports.
+
+### 11.5 Configuration de l'agent
+
+```bash
+sudo bash wazuh/install-agent.sh
+```
+
+| Étape du script | Raison |
+|---|---|
+| Installation de **`rsyslog`** | Debian 13 n'écrit plus `/var/log/auth.log` par défaut (journald seul) ; c'est ce fichier que l'agent lit pour les événements SSH et `sudo` |
+| Dépôt officiel `packages.wazuh.com/4.x` signé par clé GPG | Provenance vérifiée du paquet |
+| `apt-get install wazuh-agent=4.14.10-1` avec `WAZUH_MANAGER=127.0.0.1` | L'agent est enregistré automatiquement auprès du manager |
+| `apt-mark hold wazuh-agent` | Un agent **plus récent** que le manager est refusé : on bloque les mises à jour automatiques |
+
+**Figure 43 — Agent actif dans le dashboard**
+
+![Dashboard Wazuh : page Agents, agent de la VM à l'état Active, version v4.14.10](docs/images/43-wazuh-agent-actif.png)
+
+[À COMPLÉTER : nom et identifiant de l'agent, système détecté]
+
+### 11.6 Détection des tentatives d'intrusion
+
+Les événements sont produits **sur la VM elle-même** par un script reproductible :
+
+```bash
+sudo bash wazuh/simulate-attacks.sh
+```
+
+| Scénario | Action du script | Règles Wazuh attendues |
+|---|---|---|
+| Force brute SSH | 10 connexions SSH vers `127.0.0.1` avec des utilisateurs inexistants | **5710** *Attempt to login using a non-existent user* ; **5712** *brute force* (plusieurs 5710 en peu de temps) |
+| Création de compte | `useradd wazuhtest`, ajout au groupe `sudo` | **5902** *New user added to the system* ; changement de groupe |
+| Élévation de privilèges échouée | 3 `sudo` avec un mauvais mot de passe | Échecs d'authentification `sudo` / PAM |
+| Élévation de privilèges réussie | `sudo id` avec le bon mot de passe | **5402** *Successful sudo to ROOT executed* |
+| Modification d'un fichier système | Ajout d'une ligne dans `/etc/hosts`, puis redémarrage de l'agent pour lancer l'analyse FIM | **550** *Integrity checksum changed* |
+
+**Figure 44 — Alertes de force brute SSH**
+
+![Dashboard Wazuh : Threat Hunting filtré sur sshd, alertes 5710 et 5712, utilisateurs attaquant1 à attaquant10 depuis 127.0.0.1](docs/images/44-wazuh-ssh-bruteforce.png)
+
+**Figure 45 — Alertes d'élévation de privilèges**
+
+![Dashboard Wazuh : alertes sudo, nouvel utilisateur wazuhtest et sudo vers root](docs/images/45-wazuh-elevation-privileges.png)
+
+| Règle | Description | Niveau | Nombre d'alertes |
+|---|---|---|---|
+| 5710 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
+| 5712 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
+| 5902 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
+| 5402 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
+| 550 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
+
+Les numéros de règles ci-dessus sont ceux du jeu de règles standard de Wazuh ; le tableau est complété avec les identifiants, niveaux et nombres effectivement affichés par le dashboard.
+
+> **Attaques réelles.** Une VM publique reçoit en permanence des tentatives de connexion SSH depuis Internet. Il est fréquent de voir, à côté des événements simulés, des alertes 5710 / 5712 venant d'adresses IP inconnues. [À COMPLÉTER : en observer et noter le nombre et quelques adresses sources, masquées si publiées]
+
+**Nettoyage** après les captures :
+
+```bash
+sudo bash wazuh/cleanup-simulation.sh
+```
+
+### 11.7 Analyse des vulnérabilités (CVE)
+
+Depuis la version 4.8, le module **Vulnerability Detection** de Wazuh compare l'inventaire des paquets envoyé par chaque agent à son flux de vulnérabilités, sans configuration supplémentaire.
+
+**Figure 46 — Vulnérabilités détectées sur la VM**
+
+![Dashboard Wazuh : Vulnerability Detection, répartition par sévérité et liste des CVE par paquet](docs/images/46-wazuh-vulnerabilites.png)
+
+| Sévérité | Nombre de CVE |
+|---|---|
+| Critical | [À COMPLÉTER] |
+| High | [À COMPLÉTER] |
+| Medium | [À COMPLÉTER] |
+| Low | [À COMPLÉTER] |
+
+[À COMPLÉTER : deux ou trois CVE représentatives (paquet, version installée, version corrigée)]
+
+**Lecture et remédiation :**
+
+- une CVE avec une version corrigée disponible se traite par `apt-get update && apt-get upgrade` sur la VM, puis se vérifie au prochain inventaire de l'agent ;
+- une CVE sans correctif se documente comme risque accepté, avec des mesures compensatoires (service non exposé, pare-feu) ;
+- contrairement à Trivy (Workshop 5), qui analyse une **image** avant son exécution, Wazuh surveille la **machine en production** dans la durée : les deux contrôles se complètent.
+
+### 11.8 Réponse aux incidents et bonnes pratiques
+
+| Pratique | Mise en œuvre possible avec Wazuh |
+|---|---|
+| Bloquer automatiquement une IP qui fait de la force brute | *Active Response* `firewall-drop` déclenchée par la règle 5712 |
+| Être prévenu sans regarder le dashboard | Intégrations Slack, e-mail ou webhook sur les alertes de niveau élevé |
+| Surveiller aussi les conteneurs | Module `docker-listener` de l'agent (démarrage, arrêt, exécution de commandes dans un conteneur) |
+| Conserver des preuves | Rétention des index d'alertes dans l'indexer, export pour l'analyse post-incident |
+| Réduire le bruit | Ajuster les niveaux de règles et ignorer les sources de confiance documentées |
+
+---
+
+## 12. Résultats et comparaison
+
+### 12.1 Synthèse
 
 | Outil | Résultat observé | Action menée | Statut final |
 |---|---|---|---|
@@ -1774,9 +2008,10 @@ Après le commit `bc0e152`, l'analyse du Dockerfile passe ; l'image reste bloqu�
 | OWASP ZAP Baseline | Build #1 de `workshop-4` en échec (`exit 3`, erreur d'exécution) ; après correction : 14 alertes, **0 High**, 2 Medium (CSP, anti-clickjacking), 7 Low (headers, `X-Powered-By`), 5 Informational ; aucun cookie posé | Suppression du montage de volume, récupération des rapports par `docker cp` ; correction des headers proposée (§ 9.7) | Étape verte (aucune alerte FAIL) |
 | OWASP ZAP Active Scan | [À COMPLÉTER : alertes XSS / injection sur Juice Shop] | Exécution à la demande (`ACTIVE_SCAN`) | [À COMPLÉTER : build UNSTABLE attendu] |
 | Trivy | Build #3 de `workshop-5` arrêté par `Trivy Scan` (4 min 43 s) : **28 HIGH, 0 CRITICAL**, toutes corrigeables (13 ImageMagick dans Debian 12.15, 10 dans npm livré avec `node:22`, 5 dans `glob` / `undici`), aucun secret ; Dockerfile sans mauvaise configuration HIGH | Passage en utilisateur non-root, `.dockerignore` ; image de base allégée et suppression de npm proposées | Pipeline **bloqué** par le seuil HIGH / CRITICAL, comme attendu |
+| Wazuh | Manager, indexer et dashboard 4.14.10 en conteneurs ; agent sur la VM ; [À COMPLÉTER : alertes SSH / sudo / FIM observées, nombre de CVE] | Scénarios d'attaque reproductibles (`wazuh/simulate-attacks.sh`) | [À COMPLÉTER] |
 | Jenkins | Build #9 (Workshop 1), build #2 de `workshop-3` (Workshop 3), builds de `workshop-4` (Workshop 4) | Clé SonarQube par branche après un `Quality gate is 'ERROR'` | `Deploy` ignoré sur les branches de test ; [À COMPLÉTER : build vert de `workshop-4`] |
 
-### 11.2 Problèmes SonarQube identifiés
+### 12.2 Problèmes SonarQube identifiés
 
 | Fichier | Règle / message | Qualité | Sévérité | Cause | Correction recommandée | Retest |
 |---|---|---|---|---|---|---|
@@ -1786,32 +2021,32 @@ Après le commit `bc0e152`, l'analyse du Dockerfile passe ; l'image reste bloqu�
 
 Les captures n'affichent pas les 9 issues individuellement ; seules ces trois familles sont visibles.
 
-### 11.3 Comparaison des outils sur ce projet
+### 12.3 Comparaison des outils sur ce projet
 
-| Critère | SonarQube | Semgrep | Dependency-Check | Dependabot | OWASP ZAP | Trivy |
-|---|---|---|---|---|---|---|
-| Ce qui est analysé | Code de l'équipe | Code de l'équipe | Bibliothèques tierces | Bibliothèques tierces | Application en fonctionnement | Image Docker de l'application |
-| Type de contrôle | SAST (qualité et sécurité) | SAST (sécurité, par règles) | SCA (CVE connues) | SCA (mises à jour) | DAST (passif et actif) | Conteneurs (CVE, secrets, misconfig) |
-| Nature de la sortie | Issues, notes, Quality Gate | Findings par règle | Vulnérabilités avec score CVSS | Pull requests et alertes | Alertes par niveau de risque (High à Informational) | Vulnérabilités et findings par sévérité |
-| Bloque le pipeline | Via la Quality Gate | Via `--error` | Via `--failOnCVSS 7` | Non (hors pipeline) | Baseline : sur alerte FAIL ; actif : build UNSTABLE | Via `--exit-code 1` sur HIGH / CRITICAL |
-| Corrige automatiquement | Non | Non | Non | Oui, par pull request | Non | Non |
-| Durée dans le pipeline | 1 min 13 s + 8 à 21 s | 15 s | 9 min 56 s (1re exécution) | Hors pipeline | Baseline ≈ 1 min ; actif : [À COMPLÉTER] | 4 min 43 s (+ 14 min de build d'image) |
-| Problèmes signalés | 9 sur `app/page.tsx` | 0 (rapporté) | [À COMPLÉTER] | [À COMPLÉTER] | Baseline : 0 High, 2 Medium, 7 Low, 5 Info | 28 HIGH, 0 CRITICAL (image de base) |
+| Critère | SonarQube | Semgrep | Dependency-Check | Dependabot | OWASP ZAP | Trivy | Wazuh |
+|---|---|---|---|---|---|---|---|
+| Ce qui est analysé | Code de l'équipe | Code de l'équipe | Bibliothèques tierces | Bibliothèques tierces | Application en fonctionnement | Image Docker de l'application | Machine en fonctionnement (journaux, fichiers, paquets) |
+| Type de contrôle | SAST (qualité et sécurité) | SAST (sécurité, par règles) | SCA (CVE connues) | SCA (mises à jour) | DAST (passif et actif) | Conteneurs (CVE, secrets, misconfig) | Supervision et détection (SIEM / XDR) |
+| Nature de la sortie | Issues, notes, Quality Gate | Findings par règle | Vulnérabilités avec score CVSS | Pull requests et alertes | Alertes par niveau de risque (High à Informational) | Vulnérabilités et findings par sévérité | Alertes par niveau (0 à 15), CVE de la machine |
+| Bloque le pipeline | Via la Quality Gate | Via `--error` | Via `--failOnCVSS 7` | Non (hors pipeline) | Baseline : sur alerte FAIL ; actif : build UNSTABLE | Via `--exit-code 1` sur HIGH / CRITICAL | Non (hors pipeline, en continu) |
+| Corrige automatiquement | Non | Non | Non | Oui, par pull request | Non | Non | Réponse automatique possible (*Active Response*) |
+| Durée dans le pipeline | 1 min 13 s + 8 à 21 s | 15 s | 9 min 56 s (1re exécution) | Hors pipeline | Baseline ≈ 1 min ; actif : [À COMPLÉTER] | 4 min 43 s (+ 14 min de build d'image) | Hors pipeline (permanent) |
+| Problèmes signalés | 9 sur `app/page.tsx` | 0 (rapporté) | [À COMPLÉTER] | [À COMPLÉTER] | Baseline : 0 High, 2 Medium, 7 Low, 5 Info | 28 HIGH, 0 CRITICAL (image de base) | [À COMPLÉTER] |
 
 Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage de `Math.random()` que Semgrep n'a pas relevé ; ni l'un ni l'autre ne regardent les dépendances, ce que couvrent Dependency-Check et Dependabot. Ensemble, ils couvrent le code écrit par l'équipe **et** le code importé. OWASP ZAP ajoute enfin le regard de l'extérieur : il évalue l'application **déployée**, y compris la configuration HTTP apportée par Cloudflare, que ni le code ni les dépendances ne révèlent. Trivy, enfin, examine l'**image** qui embarque l'application : il est le seul à voir les paquets du système de base et la configuration du Dockerfile.
 
 ---
 
-## 12. Limites et recommandations
+## 13. Limites et recommandations
 
-### 12.1 Limites du SAST
+### 13.1 Limites du SAST
 
 - **Faux positifs** : un problème signalé n'est pas forcément exploitable (exemple : S2245 si l'identifiant n'a aucun rôle de sécurité). Chaque résultat demande une revue humaine.
 - **Faux négatifs** : un outil ne trouve que ce que ses règles décrivent. Zéro finding ne signifie pas zéro vulnérabilité.
 - **Pas d'exécution** : l'analyse statique ne voit ni la configuration réelle en production, ni les comportements à l'exécution, ni les failles de logique métier.
 - **Dépendances non couvertes** : les vulnérabilités des bibliothèques npm échappent au SAST ; elles relèvent de l'analyse de composition (SCA), traitée par le Workshop 3 (voir [§ 8](#8-workshop-3-analyse-des-dépendances-sca)).
 
-### 12.2 Limites du SCA
+### 13.2 Limites du SCA
 
 - **Vulnérabilités connues seulement** : Dependency-Check ne détecte que les CVE déjà publiées. Une faille non divulguée, ou une bibliothèque malveillante sans CVE, passe inaperçue.
 - **Faux positifs d'identification** : l'association entre un paquet et une CVE repose sur des identifiants (CPE) parfois approximatifs ; un finding peut concerner un autre produit homonyme.
@@ -1821,7 +2056,7 @@ Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage
 - **Dependabot** : il ne lit sa configuration que sur la branche par défaut, et ses pull requests ne doivent être fusionnées qu'après un pipeline vert, sous peine d'introduire une régression.
 - **Coût en temps et en mémoire** : la première exécution de Dependency-Check dure près de 10 minutes et la VM (3,8 Gio de RAM) héberge aussi Jenkins et SonarQube.
 
-### 12.3 Limites du DAST
+### 13.3 Limites du DAST
 
 - **Couverture limitée au parcours** : ZAP ne teste que les pages et paramètres qu'il découvre ; une API non liée depuis l'interface ou une page derrière une authentification peut lui échapper.
 - **Scan passif limité** : le baseline repère surtout des problèmes de configuration (headers, cookies). Il ne prouve pas l'absence de XSS ou d'injection.
@@ -1830,7 +2065,7 @@ Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage
 - **Dépendance à l'environnement** : les résultats varient selon l'URL scannée (local, Cloudflare), la configuration du CDN et l'état de l'application au moment du scan.
 - **Durée** : un scan actif complet peut prendre plusieurs dizaines de minutes, ce qui le rend peu adapté à chaque push.
 
-### 12.4 Limites de l'analyse des conteneurs
+### 13.4 Limites de l'analyse des conteneurs
 
 - **Vulnérabilités connues seulement** : comme pour le SCA, Trivy ne détecte que les CVE publiées dans sa base.
 - **Image construite pour le workshop** : l'application de production tourne sur Cloudflare Workers, pas dans cette image ; les résultats décrivent l'image `notes-app`, pas l'environnement de production.
@@ -1840,7 +2075,17 @@ Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage
 - **Installation de Trivy non figée** : le script d'installation est récupéré depuis la branche `main` du dépôt Trivy, sans version fixée ni vérification d'empreinte.
 - **Durée** : `Docker Build` (14 min) et `Trivy Scan` (près de 5 min) allongent fortement le pipeline.
 
-### 12.5 Limites propres aux workshops
+### 13.5 Limites de la supervision
+
+- **Détection, pas prévention** : par défaut Wazuh alerte mais ne bloque pas ; la réponse automatique (*Active Response*) doit être configurée explicitement.
+- **Une seule machine surveillée** : seule la VM de la chaîne CI/CD porte un agent ; l'application de production, sur Cloudflare Workers, n'est pas couverte par Wazuh.
+- **Supervision sur la machine supervisée** : Wazuh tourne sur la VM qu'il surveille ; un attaquant qui la compromet peut aussi atteindre la plateforme de supervision. En production, le manager est installé sur une machine distincte.
+- **Bruit** : une VM publique reçoit en continu des tentatives SSH réelles ; sans réglage, les alertes importantes peuvent être noyées.
+- **Ressources** : l'indexer réserve 1 Go de mémoire et l'ensemble demande au moins 4 Go, en concurrence avec Jenkins et SonarQube.
+- **Identifiants par défaut** du dashboard et de l'API, publiquement connus, à changer avant tout usage réel.
+- **Simulations locales** : les attaques sont lancées depuis la VM elle-même (`127.0.0.1`) ; elles valident les règles, pas la détection d'un attaquant réel venant de l'extérieur.
+
+### 13.6 Limites propres aux workshops
 
 - La **Quality Gate est passée alors que des problèmes restent ouverts** : une Quality Gate passée ne prouve pas que l'application est sûre, seulement qu'elle respecte les conditions configurées.
 - La **couverture de tests est de 0 %** : aucune métrique de test n'alimente l'analyse.
@@ -1856,7 +2101,7 @@ Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage
 - Les conteneurs ZAP sont lancés en **`root`** (`-u root`) pour contourner le problème d'écriture des rapports ; acceptable pour un workshop, à revoir pour un usage durable.
 - Le **scan actif ne porte pas sur l'application de l'équipe** : aucune pré-production de l'application Next.js n'a été mise en place.
 
-### 12.6 Recommandations pour ce projet
+### 13.7 Recommandations pour ce projet
 
 1. **Définir un secret sur le webhook GitHub** et le renseigner dans Jenkins, afin que seules les requêtes signées par GitHub déclenchent un build.
 2. **Corriger S2245** avec `crypto.getRandomValues()`, ou marquer le problème comme revu en documentant pourquoi il est sans risque.
@@ -1871,16 +2116,19 @@ Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage
 11. **Fixer les versions** des images ZAP et Juice Shop pour rendre les scans reproductibles.
 12. **Durcir l'image Docker** : base `node:22-alpine` (ou *distroless*) à version fixée, build multi-stage, `npm ci --omit=dev`, `HEALTHCHECK` (§ 10.7), puis comparer les rapports Trivy avant / après.
 13. **Figer la version de Trivy** (téléchargement d'une version précise avec vérification de l'empreinte) et documenter les exceptions dans un fichier `.trivyignore`.
-14. **Migrer SonarQube vers PostgreSQL** et **installer cloudflared comme service** plutôt qu'en arrière-plan.
-15. **Aligner les versions** d'Ansible et de la collection `community.docker`.
-16. **Lier les ports publiés à `127.0.0.1`** dans le playbook (`"127.0.0.1:8080:8080"`, `"127.0.0.1:9000:9000"`) et **fixer des tags d'image précis** pour Jenkins et SonarQube.
-17. **Augmenter les ressources de la VM** (ou ajouter du swap) si Dependency-Check ou SonarQube sont interrompus par manque de mémoire.
-18. **Ne fusionner une pull request de Dependabot qu'après un pipeline vert**, et activer la protection de la branche `main` pour l'imposer.
-19. **Masquer les adresses IP publiques** visibles dans les captures avant une publication large du dépôt.
+14. **Changer les mots de passe par défaut** de Wazuh (dashboard, API, utilisateurs de l'indexer) et garder le dashboard accessible uniquement par tunnel SSH ou derrière Cloudflare Access.
+15. **Activer l'*Active Response*** `firewall-drop` sur la règle de force brute SSH, et une notification (Slack, e-mail) pour les alertes de niveau élevé.
+16. **Installer le manager Wazuh sur une machine dédiée** et ajouter le module `docker-listener` pour superviser aussi les conteneurs de la chaîne CI/CD.
+17. **Migrer SonarQube vers PostgreSQL** et **installer cloudflared comme service** plutôt qu'en arrière-plan.
+18. **Aligner les versions** d'Ansible et de la collection `community.docker`.
+19. **Lier les ports publiés à `127.0.0.1`** dans le playbook (`"127.0.0.1:8080:8080"`, `"127.0.0.1:9000:9000"`) et **fixer des tags d'image précis** pour Jenkins et SonarQube.
+20. **Augmenter les ressources de la VM** (ou ajouter du swap) si Dependency-Check ou SonarQube sont interrompus par manque de mémoire.
+21. **Ne fusionner une pull request de Dependabot qu'après un pipeline vert**, et activer la protection de la branche `main` pour l'imposer.
+22. **Masquer les adresses IP publiques** visibles dans les captures avant une publication large du dépôt.
 
 ---
 
-## 13. Conclusion
+## 14. Conclusion
 
 Ces workshops ont permis de construire une chaîne de sécurité automatisée de bout en bout. L'infrastructure a été provisionnée **sous forme de code** avec Ansible (un inventaire et un playbook qui installent Docker puis lancent Jenkins et SonarQube) sur une instance Google Cloud ; Jenkins et SonarQube y tournent en conteneurs Docker et sont exposés de manière sécurisée par un **Cloudflare Tunnel**. Un **webhook GitHub** déclenche le pipeline à chaque push, et Jenkins enchaîne installation, **analyse SonarQube**, **Quality Gate**, **analyse Semgrep**, **contrôle des dépendances avec OWASP Dependency-Check** et **déploiement** sur Cloudflare Workers.
 
@@ -1892,11 +2140,13 @@ Le Workshop 4 a complété la chaîne par le **test dynamique** de l'application
 
 Le Workshop 5 a porté la sécurité au niveau du **conteneur** : l'application a été empaquetée dans une image Docker, analysée par **Trivy** à chaque build (CVE du système et des paquets npm, secrets, configuration du Dockerfile). Le seuil de blocage a joué son rôle en arrêtant le pipeline avant le déploiement ; une première remédiation (exécution en utilisateur non-root, `.dockerignore`) a été appliquée, et le passage à une image de base minimale avec build multi-stage est proposé pour réduire le nombre de vulnérabilités. Le scan a relevé 28 vulnérabilités HIGH et aucune CRITICAL, **issues pour l'essentiel de l'image de base** (ImageMagick et npm) et non du code de l'équipe : c'est l'exemple même d'un risque que ni le SAST ni le SCA ne pouvaient voir.
 
+Le Workshop 6 a prolongé la démarche **après le déploiement** : Wazuh, déployé avec Docker sur la VM de la chaîne CI/CD, supervise cette machine grâce à un agent. Des scénarios reproductibles (force brute SSH, création de compte, élévation de privilèges, modification de `/etc/hosts`) ont permis de vérifier que les intrusions sont détectées, et le module *Vulnerability Detection* a dressé la liste des CVE des paquets installés. [À COMPLÉTER : alertes et CVE principales observées]
+
 Ces résultats doivent cependant être lus avec recul : les problèmes SonarQube n'ont pas encore été corrigés ni retestés, et une Quality Gate passée, un scan à zéro finding ou un seuil CVSS respecté ne garantissent pas l'absence de vulnérabilité. Les prochaines étapes naturelles sont la correction des problèmes identifiés, le traitement des vulnérabilités du rapport Dependency-Check, le durcissement de la Quality Gate, du webhook et de la configuration Docker, puis la correction des headers signalés par ZAP et la mise en place d'une véritable pré-production pour y conduire le scan actif.
 
 ---
 
-## 14. Références
+## 15. Références
 
 - SonarQube — documentation officielle : https://docs.sonarsource.com/sonarqube-server/
 - SonarQube — Quality Gates : https://docs.sonarsource.com/sonarqube-server/latest/instance-administration/analysis-functions/quality-gates/
@@ -1940,4 +2190,12 @@ Ces résultats doivent cependant être lus avec recul : les problèmes SonarQube
 - Docker — builds multi-stage : https://docs.docker.com/build/building/multi-stage/
 - Image officielle Node.js (variantes et utilisateur `node`) : https://hub.docker.com/_/node
 - OWASP — Docker Security Cheat Sheet : https://cheatsheetseries.owasp.org/cheatsheets/Docker_Security_Cheat_Sheet.html
+- Wazuh — documentation : https://documentation.wazuh.com/current/index.html
+- Wazuh — déploiement Docker : https://documentation.wazuh.com/current/deployment-options/docker/index.html
+- Wazuh — dépôt `wazuh-docker` : https://github.com/wazuh/wazuh-docker
+- Wazuh — installation de l'agent Linux : https://documentation.wazuh.com/current/installation-guide/wazuh-agent/wazuh-agent-package-linux.html
+- Wazuh — détection d'attaques par force brute : https://documentation.wazuh.com/current/proof-of-concept-guide/detect-brute-force-attack.html
+- Wazuh — Vulnerability Detection : https://documentation.wazuh.com/current/user-manual/capabilities/vulnerability-detection/index.html
+- Wazuh — File Integrity Monitoring : https://documentation.wazuh.com/current/user-manual/capabilities/file-integrity/index.html
+- Wazuh — Active Response : https://documentation.wazuh.com/current/user-manual/capabilities/active-response/index.html
 - Diagrammes Mermaid sur GitHub : https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams
