@@ -1660,7 +1660,7 @@ stage('Trivy Scan') {
 
 **Figure 39 — Échec de l'étape Trivy Scan**
 
-![Jenkins workshop-5 build #3 : étape Shell Script de Trivy Scan en échec après 4 min 19 s, script returned exit code 1](docs/images/39-trivy-exit-code-1.png)
+![Jenkins workshop-5 build #3 : étape Shell Script de Trivy Scan en échec après 4 min 19 s, script returned exit code 1](docs/images/38-pipeline-workshop-5-trivy-echec.png)
 
 *Explication :* le script de l'étape `Trivy Scan` se termine par `script returned exit code 1` après 4 min 19 s. Ce code de sortie est produit volontairement par l'option `--exit-code 1` du contrôle bloquant : Trivy a trouvé des vulnérabilités HIGH corrigeables, et Jenkins arrête le pipeline. Il ne s'agit **pas** d'une erreur de l'outil (comme le `exit 3` de ZAP au Workshop 4), mais d'un **résultat de sécurité**.
 
