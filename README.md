@@ -32,9 +32,9 @@ Workshop 5 (.png) :
 
 Workshop 6 (.png) :
  42-wazuh-conteneurs.png                     Terminal : docker compose ps (manager, indexer, dashboard Up)
- 43-wazuh-agent-actif.png                    Dashboard : page Agents, agent de la VM "Active"
- 44-wazuh-ssh-bruteforce.png                 Dashboard : alertes sshd 5710 / 5712 (force brute)
- 45-wazuh-elevation-privileges.png           Dashboard : alertes sudo / nouvel utilisateur (5402, 5902)
+ 43-wazuh-installation-agent.png             Terminal : docker ps puis install-agent.sh
+ 44-wazuh-agent-actif.png                    Dashboard : Endpoints, agent 001 devsecops "active"
+ 45-wazuh-threat-hunting.png                 Dashboard : Threat Hunting > Events (alertes de l'agent devsecops)
  46-wazuh-vulnerabilites.png                 Dashboard : Vulnerability Detection (CVE par sévérité)
 
 Éléments à compléter dans le texte : repérez les mentions [À COMPLÉTER ...].
@@ -1860,7 +1860,18 @@ bash wazuh/check-vm.sh
 
 Wazuh *single-node* demande au moins **4 Go de RAM** (l'indexer est lancé avec `-Xms1g -Xmx1g`), en plus de Jenkins et de SonarQube.
 
-[À COMPLÉTER : sortie de `check-vm.sh` : vCPU, RAM, disque, conteneurs déjà présents]
+Résultat sur la VM `devsecops` (projet GCP, zone `us-central1-a`) avant toute modification :
+
+| Élément | Valeur relevée | Verdict |
+|---|---|---|
+| Système | Debian GNU/Linux 13 (trixie), noyau 6.12 | ✅ |
+| Type de machine | `e2-medium` : 2 vCPU, **3,8 Gio** de RAM, 2 Gio de swap | ❌ seulement **1,1 Gio disponible** |
+| Conteneurs présents | `jenkins` (8080, 50000) et `sonarqube` (9000) | Consomment l'essentiel de la mémoire |
+| Disque | 35 Go, 20 Go libres | ✅ (en apparence, voir incident 2) |
+| Docker / Compose | 29.9.0 / v5.6.0 | ✅ |
+| Ports de Wazuh (443, 1514, 1515, 514, 9200, 55000) | Libres | ✅ |
+
+La VM ne pouvait pas accueillir Wazuh en plus de Jenkins et de SonarQube : le script a évité un déploiement qui aurait saturé la mémoire et arrêté toute la chaîne CI/CD (voir les incidents ci-dessous).
 
 **Étape 2 — Déployer Wazuh :**
 
@@ -1898,6 +1909,17 @@ puis `https://localhost:8443` dans le navigateur (certificat auto-signé à acce
 
 Le pare-feu GCP ne laisse passer que les ports explicitement autorisés : aucune règle n'a été ajoutée pour ces ports.
 
+#### Incidents rencontrés pendant le déploiement
+
+| Incident | Symptôme | Cause | Résolution |
+|---|---|---|---|
+| 1. Mémoire insuffisante | `check-vm.sh` : 1,1 Gio de RAM disponible | `e2-medium` (3,8 Gio) déjà occupée par Jenkins et SonarQube | Passage en **`e2-standard-2`** (8 Gio) : `gcloud compute instances set-machine-type devsecops --machine-type e2-standard-2` (VM arrêtée puis redémarrée) ; 5,2 Gio disponibles ensuite |
+| 2. Disque plein | `apt-get` : `No space left on device`, `/dev/sda1` à **100 %** (35 Go) | Images Wazuh (≈ 3 Go) + couches d'écriture des conteneurs existants (`docker system df` : 11,6 Go) | Disque agrandi à **60 Go** (`gcloud compute disks resize devsecops --size 60GB`), puis redémarrage pour étendre la partition (`growpart` absent de l'image) |
+| 3. Changement d'adresse IP | `34.133.254.12` remplacée par `34.42.16.35` après l'arrêt de la VM | Adresse externe **éphémère** | Adresse réservée en **statique** : `gcloud compute addresses create devsecops-ip --addresses=34.42.16.35 --region=us-central1` |
+| 4. Accès SSH refusé | `Permission denied (publickey)` | Clé publique de l'utilisateur `anass` absente de la VM | Clé ajoutée aux métadonnées via `gcloud compute ssh anass**Figure 43 — Installationevsecops --ssh-key-file=…` |
+
+Ces incidents illustrent concrètement le coût d'une plateforme de supervision : elle consomme elle-même des ressources (mémoire, disque) qu'il faut prévoir avant le déploiement.
+
 ### 11.5 Configuration de l'agent
 
 ```bash
@@ -1911,11 +1933,25 @@ sudo bash wazuh/install-agent.sh
 | `apt-get install wazuh-agent=4.14.10-1` avec `WAZUH_MANAGER=127.0.0.1` | L'agent est enregistré automatiquement auprès du manager |
 | `apt-mark hold wazuh-agent` | Un agent **plus récent** que le manager est refusé : on bloque les mises à jour automatiques |
 
-**Figure 43 — Agent actif dans le dashboard**
+**Figure 43 — Installation de l'agent**
 
-![Dashboard Wazuh : page Agents, agent de la VM à l'état Active, version v4.14.10](docs/images/43-wazuh-agent-actif.png)
+![Terminal : docker ps (wazuh.dashboard, wazuh.manager, wazuh.indexer, sonarqube, jenkins Up) puis exécution de install-agent.sh](docs/images/43-wazuh-installation-agent.png)
 
-[À COMPLÉTER : nom et identifiant de l'agent, système détecté]
+*Explication :* les cinq conteneurs de la VM (trois pour Wazuh, Jenkins et SonarQube) sont à l'état `Up`. Le script installe le paquet `wazuh-agent 4.14.10-1` depuis le dépôt officiel, le bloque (`wazuh-agent set on hold`) et démarre le service (`active (running)`).
+
+**Figure 44 — Agent actif dans le dashboard**
+
+![Dashboard Wazuh : Endpoints, 1 agent Active, 0 Disconnected, agent 001 devsecops, 127.0.0.1, groupe default, Debian GNU/Linux 13, node01, v4.14.10, active](docs/images/44-wazuh-agent-actif.png)
+
+| Champ | Valeur |
+|---|---|
+| ID / nom | `001` / `devsecops` |
+| Adresse | `127.0.0.1` (agent sur le même hôte que le manager) |
+| Groupe | `default` |
+| Système | Debian GNU/Linux 13 |
+| Nœud du manager | `node01` |
+| Version | `v4.14.10` (identique au manager) |
+| Statut | **active** ; 0 *Disconnected*, 0 *Pending*, 0 *Never connected* |
 
 ### 11.6 Détection des tentatives d'intrusion
 
@@ -1933,25 +1969,22 @@ sudo bash wazuh/simulate-attacks.sh
 | Élévation de privilèges réussie | `sudo id` avec le bon mot de passe | **5402** *Successful sudo to ROOT executed* |
 | Modification d'un fichier système | Ajout d'une ligne dans `/etc/hosts`, puis redémarrage de l'agent pour lancer l'analyse FIM | **550** *Integrity checksum changed* |
 
-**Figure 44 — Alertes de force brute SSH**
+**Figure 45 — Événements de sécurité dans Threat Hunting**
 
-![Dashboard Wazuh : Threat Hunting filtré sur sshd, alertes 5710 et 5712, utilisateurs attaquant1 à attaquant10 depuis 127.0.0.1](docs/images/44-wazuh-ssh-bruteforce.png)
+![Dashboard Wazuh : Threat Hunting > Events, 602 événements sur 24 heures pour l'agent devsecops, pic vers 21 h, alertes PAM 5501 / 5502](docs/images/45-wazuh-threat-hunting.png)
 
-**Figure 45 — Alertes d'élévation de privilèges**
+*Explication :* sur les dernières 24 heures, Wazuh a enregistré **602 événements** pour l'agent `devsecops`, concentrés entre 20 h et 22 h, c'est-à-dire après l'installation de l'agent et pendant les simulations. Les lignes visibles sont des règles **5501 / 5502** (*PAM: Login session opened / closed*, niveau 3) : ce sont les sessions ouvertes par les commandes `su` et `sudo` du script de simulation.
 
-![Dashboard Wazuh : alertes sudo, nouvel utilisateur wazuhtest et sudo vers root](docs/images/45-wazuh-elevation-privileges.png)
+**Force brute SSH (règle 5710).** Le filtre `rule.id:5710` dans Threat Hunting renvoie **63 alertes** *sshd: Attempt to login using a non-existent user*, de niveau **5**, toutes sur l'agent `devsecops`, dont une série à 21:36:47 correspondant à l'exécution de la simulation (10 utilisateurs `attaquant1` à `attaquant10`).
 
-| Règle | Description | Niveau | Nombre d'alertes |
+| Règle | Description (dashboard) | Niveau | Observé |
 |---|---|---|---|
-| 5710 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
-| 5712 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
-| 5902 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
-| 5402 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
-| 550 | [À COMPLÉTER] | [À COMPLÉTER] | [À COMPLÉTER] |
+| 5710 | sshd: Attempt to login using a non-existent user | 5 | **63 alertes** en 24 h |
+| 5501 / 5502 | PAM: Login session opened / closed | 3 | Visibles dans les événements (sessions `su` / `sudo`) |
+| 5712 | sshd: brute force trying to get access to the system | 10 | Attendue (série de 5710 rapprochées), non relevée dans les captures |
+| 5902, 5402, 550 | Nouvel utilisateur, `sudo` vers root, intégrité de `/etc/hosts` | — | Attendues, non relevées dans les captures |
 
-Les numéros de règles ci-dessus sont ceux du jeu de règles standard de Wazuh ; le tableau est complété avec les identifiants, niveaux et nombres effectivement affichés par le dashboard.
-
-> **Attaques réelles.** Une VM publique reçoit en permanence des tentatives de connexion SSH depuis Internet. Il est fréquent de voir, à côté des événements simulés, des alertes 5710 / 5712 venant d'adresses IP inconnues. [À COMPLÉTER : en observer et noter le nombre et quelques adresses sources, masquées si publiées]
+> **Attaques réelles.** Une VM publique reçoit en permanence des tentatives de connexion SSH depuis Internet. Les 63 alertes 5710 dépassent largement les 10 tentatives d'une exécution de la simulation, et une partie apparaît en dehors de son horaire (vers 20 h et à 21:59) : elles proviennent d'autres exécutions ou de **tentatives réelles** venues d'Internet. L'ajout de la colonne `data.srcip` dans Threat Hunting permet de distinguer les deux (`127.0.0.1` pour la simulation).
 
 **Nettoyage** après les captures :
 
@@ -1967,14 +2000,37 @@ Depuis la version 4.8, le module **Vulnerability Detection** de Wazuh compare l'
 
 ![Dashboard Wazuh : Vulnerability Detection, répartition par sévérité et liste des CVE par paquet](docs/images/46-wazuh-vulnerabilites.png)
 
-| Sévérité | Nombre de CVE |
+| Sévérité | Nombre |
 |---|---|
-| Critical | [À COMPLÉTER] |
-| High | [À COMPLÉTER] |
-| Medium | [À COMPLÉTER] |
-| Low | [À COMPLÉTER] |
+| Critical | **45** |
+| High | **293** |
+| Medium | **194** |
+| Low | **2** |
+| *Pending evaluation* | 257 |
+| **Total (Debian GNU/Linux 13, agent `devsecops`)** | **791** |
 
-[À COMPLÉTER : deux ou trois CVE représentatives (paquet, version installée, version corrigée)]
+| Top 5 des paquets | Vulnérabilités |
+|---|---|
+| `linux-image-cloud-amd64` | **652** |
+| `vim` | 29 |
+| `vim-common` | 29 |
+| `vim-runtime` | 29 |
+| `vim-tiny` | 29 |
+
+| Top 5 des CVE | Occurrences |
+|---|---|
+| CVE-2026-97876 | 5 |
+| CVE-2026-28417 | 4 |
+| CVE-2026-28418 | 4 |
+| CVE-2026-28420 | 4 |
+| CVE-2026-28421 | 4 |
+
+**Interprétation :**
+
+- **82 % des vulnérabilités (652 sur 791) concernent un seul paquet : le noyau** `linux-image-cloud-amd64`. Le noyau Linux reçoit un très grand nombre de CVE ; une seule mise à jour du noyau suivie d'un redémarrage en corrige la majorité. C'est donc la remédiation prioritaire.
+- **vim** apparaît quatre fois (paquets `vim`, `vim-common`, `vim-runtime`, `vim-tiny`, 29 chacun) : un même ensemble de CVE est compté pour chaque paquet. vim n'est pas nécessaire à l'exécution des services et peut être mis à jour, ou retiré au profit de `nano`.
+- **257 vulnérabilités sont en attente d'évaluation** : Wazuh n'a pas encore pu leur attribuer de sévérité (score CVSS pas encore publié, ou correspondance en cours).
+- Le système est très récent (Debian 13 installée en octobre 2026), mais **18 paquets** restaient à mettre à jour au moment de l'installation de l'agent (`18 not upgraded`) : une simple mise à jour réduit déjà l'exposition.
 
 **Lecture et remédiation :**
 
@@ -2008,7 +2064,7 @@ Depuis la version 4.8, le module **Vulnerability Detection** de Wazuh compare l'
 | OWASP ZAP Baseline | Build #1 de `workshop-4` en échec (`exit 3`, erreur d'exécution) ; après correction : 14 alertes, **0 High**, 2 Medium (CSP, anti-clickjacking), 7 Low (headers, `X-Powered-By`), 5 Informational ; aucun cookie posé | Suppression du montage de volume, récupération des rapports par `docker cp` ; correction des headers proposée (§ 9.7) | Étape verte (aucune alerte FAIL) |
 | OWASP ZAP Active Scan | [À COMPLÉTER : alertes XSS / injection sur Juice Shop] | Exécution à la demande (`ACTIVE_SCAN`) | [À COMPLÉTER : build UNSTABLE attendu] |
 | Trivy | Build #3 de `workshop-5` arrêté par `Trivy Scan` (4 min 43 s) : **28 HIGH, 0 CRITICAL**, toutes corrigeables (13 ImageMagick dans Debian 12.15, 10 dans npm livré avec `node:22`, 5 dans `glob` / `undici`), aucun secret ; Dockerfile sans mauvaise configuration HIGH | Passage en utilisateur non-root, `.dockerignore` ; image de base allégée et suppression de npm proposées | Pipeline **bloqué** par le seuil HIGH / CRITICAL, comme attendu |
-| Wazuh | Manager, indexer et dashboard 4.14.10 en conteneurs ; agent sur la VM ; [À COMPLÉTER : alertes SSH / sudo / FIM observées, nombre de CVE] | Scénarios d'attaque reproductibles (`wazuh/simulate-attacks.sh`) | [À COMPLÉTER] |
+| Wazuh | Manager, indexer et dashboard 4.14.10 en conteneurs ; agent `001 devsecops` actif ; 602 événements en 24 h dont **63 alertes 5710** (force brute SSH) ; **791 vulnérabilités** (45 Critical, 293 High, 194 Medium, 2 Low, 257 en attente), dont 652 dans le noyau | VM passée en `e2-standard-2`, disque porté à 60 Go, IP rendue statique ; scénarios d'attaque reproductibles ; mise à jour du noyau proposée | Supervision **opérationnelle** |
 | Jenkins | Build #9 (Workshop 1), build #2 de `workshop-3` (Workshop 3), builds de `workshop-4` (Workshop 4) | Clé SonarQube par branche après un `Quality gate is 'ERROR'` | `Deploy` ignoré sur les branches de test ; [À COMPLÉTER : build vert de `workshop-4`] |
 
 ### 12.2 Problèmes SonarQube identifiés
@@ -2031,7 +2087,7 @@ Les captures n'affichent pas les 9 issues individuellement ; seules ces trois fa
 | Bloque le pipeline | Via la Quality Gate | Via `--error` | Via `--failOnCVSS 7` | Non (hors pipeline) | Baseline : sur alerte FAIL ; actif : build UNSTABLE | Via `--exit-code 1` sur HIGH / CRITICAL | Non (hors pipeline, en continu) |
 | Corrige automatiquement | Non | Non | Non | Oui, par pull request | Non | Non | Réponse automatique possible (*Active Response*) |
 | Durée dans le pipeline | 1 min 13 s + 8 à 21 s | 15 s | 9 min 56 s (1re exécution) | Hors pipeline | Baseline ≈ 1 min ; actif : [À COMPLÉTER] | 4 min 43 s (+ 14 min de build d'image) | Hors pipeline (permanent) |
-| Problèmes signalés | 9 sur `app/page.tsx` | 0 (rapporté) | [À COMPLÉTER] | [À COMPLÉTER] | Baseline : 0 High, 2 Medium, 7 Low, 5 Info | 28 HIGH, 0 CRITICAL (image de base) | [À COMPLÉTER] |
+| Problèmes signalés | 9 sur `app/page.tsx` | 0 (rapporté) | [À COMPLÉTER] | [À COMPLÉTER] | Baseline : 0 High, 2 Medium, 7 Low, 5 Info | 28 HIGH, 0 CRITICAL (image de base) | 63 alertes 5710 ; 791 CVE sur la VM (45 Critical) |
 
 Les quatre outils ne voient pas les mêmes choses : SonarQube a signalé l'usage de `Math.random()` que Semgrep n'a pas relevé ; ni l'un ni l'autre ne regardent les dépendances, ce que couvrent Dependency-Check et Dependabot. Ensemble, ils couvrent le code écrit par l'équipe **et** le code importé. OWASP ZAP ajoute enfin le regard de l'extérieur : il évalue l'application **déployée**, y compris la configuration HTTP apportée par Cloudflare, que ni le code ni les dépendances ne révèlent. Trivy, enfin, examine l'**image** qui embarque l'application : il est le seul à voir les paquets du système de base et la configuration du Dockerfile.
 
@@ -2140,7 +2196,7 @@ Le Workshop 4 a complété la chaîne par le **test dynamique** de l'application
 
 Le Workshop 5 a porté la sécurité au niveau du **conteneur** : l'application a été empaquetée dans une image Docker, analysée par **Trivy** à chaque build (CVE du système et des paquets npm, secrets, configuration du Dockerfile). Le seuil de blocage a joué son rôle en arrêtant le pipeline avant le déploiement ; une première remédiation (exécution en utilisateur non-root, `.dockerignore`) a été appliquée, et le passage à une image de base minimale avec build multi-stage est proposé pour réduire le nombre de vulnérabilités. Le scan a relevé 28 vulnérabilités HIGH et aucune CRITICAL, **issues pour l'essentiel de l'image de base** (ImageMagick et npm) et non du code de l'équipe : c'est l'exemple même d'un risque que ni le SAST ni le SCA ne pouvaient voir.
 
-Le Workshop 6 a prolongé la démarche **après le déploiement** : Wazuh, déployé avec Docker sur la VM de la chaîne CI/CD, supervise cette machine grâce à un agent. Des scénarios reproductibles (force brute SSH, création de compte, élévation de privilèges, modification de `/etc/hosts`) ont permis de vérifier que les intrusions sont détectées, et le module *Vulnerability Detection* a dressé la liste des CVE des paquets installés. [À COMPLÉTER : alertes et CVE principales observées]
+Le Workshop 6 a prolongé la démarche **après le déploiement** : Wazuh, déployé avec Docker sur la VM de la chaîne CI/CD, supervise cette machine grâce à un agent. Des scénarios reproductibles (force brute SSH, création de compte, élévation de privilèges, modification de `/etc/hosts`) ont permis de vérifier que les intrusions sont détectées, et le module *Vulnerability Detection* a dressé la liste des CVE des paquets installés. L'agent de la VM a remonté 602 événements en 24 heures, dont 63 tentatives de connexion SSH avec des utilisateurs inexistants (simulées et réelles), et 791 vulnérabilités, dont 45 critiques ; 652 d'entre elles concernent le seul noyau Linux, ce qui fait de sa mise à jour la remédiation prioritaire. Le déploiement a aussi montré le coût d'une telle plateforme : la VM a dû être agrandie (mémoire et disque) pour l'accueillir.
 
 Ces résultats doivent cependant être lus avec recul : les problèmes SonarQube n'ont pas encore été corrigés ni retestés, et une Quality Gate passée, un scan à zéro finding ou un seuil CVSS respecté ne garantissent pas l'absence de vulnérabilité. Les prochaines étapes naturelles sont la correction des problèmes identifiés, le traitement des vulnérabilités du rapport Dependency-Check, le durcissement de la Quality Gate, du webhook et de la configuration Docker, puis la correction des headers signalés par ZAP et la mise en place d'une véritable pré-production pour y conduire le scan actif.
 
