@@ -3,12 +3,23 @@ pipeline {
 
   tools { nodejs 'node22' }
 
+  environment {
+    IMAGE      = "notes-app:${env.BUILD_NUMBER}"
+    SCAN_BIN   = '/var/jenkins_home/trivy-bin/trivy'
+    SCAN_CACHE = '/var/jenkins_home/trivy-cache'
+  }
+
   triggers { githubPush() }
 
   options {
     timestamps()
     timeout(time: 60, unit: 'MINUTES')
     disableConcurrentBuilds()
+  }
+
+  parameters {
+    string(name: 'TARGET_URL', defaultValue: 'https://notes.khalidlab.tech', description: 'App to scan with the ZAP baseline (passive) scan')
+    booleanParam(name: 'ACTIVE_SCAN', defaultValue: false, description: 'Run the ZAP active scan against a throwaway OWASP Juice Shop container (never against your real app)')
   }
 
   stages {
@@ -19,7 +30,9 @@ pipeline {
     stage('SonarQube Analysis') {
       steps {
         script {
-          def key = (env.GIT_BRANCH ==~ /(origin\/)?main/) ? 'learn-actions' : 'learn-actions-workshop-3'
+          // main -> learn-actions ; autre branche -> learn-actions-<branche> (ex. learn-actions-workshop-5)
+          def branch = (env.GIT_BRANCH ?: 'main').replaceFirst(/^origin\//, '')
+          def key = (branch == 'main') ? 'learn-actions' : "learn-actions-${branch}"
           withSonarQubeEnv('sonarqube') {
             sh "${tool 'sonar-scanner'}/bin/sonar-scanner -Dsonar.projectKey=${key} -Dsonar.projectName=${key}"
           }
@@ -62,6 +75,43 @@ pipeline {
       }
     }
 
+    stage('Docker Build') {
+      steps {
+        sh 'docker build -t $IMAGE .'
+      }
+    }
+
+    stage('Trivy Scan') {
+      steps {
+        sh '''
+          mkdir -p trivy-reports trivy-config /var/jenkins_home/trivy-bin
+
+          # install Trivy once, kept in the jenkins_home volume
+          if [ ! -x "$SCAN_BIN" ]; then
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /var/jenkins_home/trivy-bin
+          fi
+          $SCAN_BIN --version
+
+          # 1) full reports (all severities), never blocking
+          $SCAN_BIN image --cache-dir $SCAN_CACHE --scanners vuln,secret --format table -o trivy-reports/image-all.txt $IMAGE
+          $SCAN_BIN image --cache-dir $SCAN_CACHE --scanners vuln,secret --format json  -o trivy-reports/image-all.json $IMAGE
+
+          # 2) Dockerfile misconfigurations: blocks on HIGH/CRITICAL
+          cp Dockerfile trivy-config/
+          $SCAN_BIN config --cache-dir $SCAN_CACHE --severity HIGH,CRITICAL --exit-code 1 trivy-config
+
+          # 3) image gate: blocks on HIGH/CRITICAL that have a fix available
+          $SCAN_BIN image --cache-dir $SCAN_CACHE --scanners vuln,secret --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 $IMAGE
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'trivy-reports/*', allowEmptyArchive: true
+          sh 'docker rmi -f $IMAGE || true'
+        }
+      }
+    }
+
     stage('Deploy') {
       when { expression { env.GIT_BRANCH ==~ /(origin\/)?main/ } }
       steps {
@@ -81,10 +131,106 @@ pipeline {
         }
       }
     }
+
+    stage('OWASP ZAP Baseline') {
+      environment { TARGET_URL = "${params.TARGET_URL}" }
+      steps {
+        sh '''
+          mkdir -p zap-reports
+          docker rm -f zap-baseline 2>/dev/null || true
+
+          set +e
+          docker run --name zap-baseline -u root -t ghcr.io/zaproxy/zaproxy:stable \
+            bash -c "mkdir -p /zap/wrk && zap-baseline.py -t $TARGET_URL -r zap-baseline.html -J zap-baseline.json -I"
+          rc=$?
+          set -e
+
+          docker cp zap-baseline:/zap/wrk/. zap-reports/ || true
+          docker rm -f zap-baseline || true
+
+          echo "ZAP baseline exit code: $rc"
+          if [ "$rc" -ge 3 ]; then echo "ZAP baseline failed (exit $rc)"; exit 1; fi
+          if [ "$rc" -eq 1 ]; then echo "ZAP: alertes FAIL detectees"; exit 1; fi
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'zap-reports/zap-baseline.*', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'zap-reports',
+            reportFiles: 'zap-baseline.html',
+            reportName: 'ZAP Baseline Report',
+            keepAll: true,
+            allowMissing: true
+          ])
+        }
+      }
+    }
+
+    stage('OWASP ZAP Active Scan') {
+      when { expression { params.ACTIVE_SCAN } }
+      options { timeout(time: 40, unit: 'MINUTES') }
+      steps {
+        script {
+          def rc = sh(returnStatus: true, script: '''
+            mkdir -p zap-reports
+            docker rm -f zap-full juice-shop 2>/dev/null || true
+            docker network create zap-net 2>/dev/null || true
+
+            # Start a throwaway vulnerable target on a private network
+            docker run -d --name juice-shop --network zap-net bkimminich/juice-shop
+
+            # Wait up to ~2 minutes for it to answer
+            ready=0
+            for i in $(seq 1 40); do
+              if docker run --rm --network zap-net curlimages/curl -sf http://juice-shop:3000 >/dev/null; then
+                ready=1; break
+              fi
+              sleep 3
+            done
+            if [ "$ready" -ne 1 ]; then
+              echo "Juice Shop did not start"
+              exit 3
+            fi
+
+            docker run --name zap-full --network zap-net \
+              ghcr.io/zaproxy/zaproxy:stable \
+              sh -c 'mkdir -p /zap/wrk && zap-full-scan.py -t http://juice-shop:3000 -m 3 -r zap-full.html -J zap-full.json'
+            rc=$?
+            docker cp zap-full:/zap/wrk/. zap-reports/ || true
+            exit $rc
+          ''')
+          echo "ZAP active scan exit code: ${rc}"
+          // Juice Shop is deliberately vulnerable, so FAIL (1) and WARN (2) both mark the build unstable
+          if (rc == 1 || rc == 2) {
+            unstable('ZAP active scan found issues')
+          } else if (rc != 0) {
+            error("ZAP active scan failed (exit ${rc})")
+          }
+        }
+      }
+      post {
+        always {
+          sh '''
+            docker rm -f zap-full juice-shop 2>/dev/null || true
+            docker network rm zap-net 2>/dev/null || true
+          '''
+          archiveArtifacts artifacts: 'zap-reports/*', allowEmptyArchive: true
+          publishHTML(target: [
+            reportDir: 'zap-reports',
+            reportFiles: 'zap-full.html',
+            reportName: 'ZAP Active Scan Report',
+            keepAll: true,
+            allowMissing: true
+          ])
+        }
+      }
+    }
   }
 
   post {
     success { echo 'pipeline OK' }
+    unstable { echo 'pipeline finished with warnings (check the ZAP reports)' }
     failure { echo 'pipeline failed, check the stage logs' }
   }
 }
